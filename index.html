@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<!-- saved from url=(0052)file:///C:/Users/Davis/Desktop/online_viewer_net.htm -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compare Excel Files</title>
+    <script src="./index_files/xlsx.full.min.js.download"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        button { padding: 10px; background: #007BFF; color: white; border: none; cursor: pointer; margin-right: 10px; }
+        button:hover { background: #0056b3; }
+        input { margin: 10px 0; padding: 5px; width: 100%; max-width: 300px; }
+        #downloadArea { margin-top: 20px; display: none; }
+        #previewArea { margin-top: 20px; display: none; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .preview-container { max-height: 400px; overflow-y: auto; margin-top: 15px; }
+        .diff-added { background-color: #d4edda; }
+        .diff-removed { background-color: #f8d7da; }
+        .diff-changed { background-color: #fff3cd; }
+    </style>
+</head>
+<body>
+    <h1>Compare Excel Files</h1>
+    <form id="uploadForm">
+        <label for="file1">Upload First File:</label>
+        <input type="file" id="file1" accept=".xlsx"><br>
+
+        <label for="file2">Upload Second File:</label>
+        <input type="file" id="file2" accept=".xlsx"><br>
+
+        <label for="scriptName">Enter Code:</label>
+        <input type="text" id="scriptName" placeholder="Enter code name"><br>
+
+        <button type="button" id="compareButton">Run Code</button>
+        <button type="button" id="downloadButton" style="display: none;">Download Results</button><br>
+        <p id="status"></p>
+    </form>
+
+    <div id="previewArea">
+        <h3>Comparison Results</h3>
+        <div class="preview-container">
+            <table id="previewTable">
+                <thead id="previewHeader"></thead>
+                <tbody id="previewBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="downloadArea">
+        <h3>Analysis Complete</h3>
+        <p>Click the Download button to save the detailed comparison as an Excel file.</p>
+    </div>
+
+    <script>
+        // Our own comparison function that will be used if the GitHub script isn't available
+        function compareExcelFiles(workbook1, workbook2) {
+            const result = XLSX.utils.book_new();
+            const differences = [];
+            
+            // Add header row
+            differences.push(['Sheet', 'Row', 'Column', 'File 1 Value', 'File 2 Value', 'Status']);
+            
+            // Compare sheets that exist in both workbooks
+            const commonSheets = workbook1.SheetNames.filter(name => 
+                workbook2.SheetNames.includes(name));
+            
+            commonSheets.forEach(sheetName => {
+                const sheet1 = workbook1.Sheets[sheetName];
+                const sheet2 = workbook2.Sheets[sheetName];
+                
+                // Convert to JSON for easier comparison
+                const data1 = XLSX.utils.sheet_to_json(sheet1, {header: 1});
+                const data2 = XLSX.utils.sheet_to_json(sheet2, {header: 1});
+                
+                // Get max rows from both sheets
+                const maxRows = Math.max(data1.length, data2.length);
+                
+                // Compare row by row
+                for (let i = 0; i < maxRows; i++) {
+                    const row1 = data1[i] || [];
+                    const row2 = data2[i] || [];
+                    
+                    // Get max columns from both rows
+                    const maxCols = Math.max(row1.length, row2.length);
+                    
+                    // Check if entire row is missing
+                    if (!data1[i]) {
+                        differences.push([sheetName, i+1, 'All', 'MISSING ROW', 'Row exists', 'ADDED']);
+                        continue;
+                    }
+                    
+                    if (!data2[i]) {
+                        differences.push([sheetName, i+1, 'All', 'Row exists', 'MISSING ROW', 'REMOVED']);
+                        continue;
+                    }
+                    
+                    // Compare cell by cell
+                    for (let j = 0; j < maxCols; j++) {
+                        const cell1 = row1[j] !== undefined ? row1[j] : '';
+                        const cell2 = row2[j] !== undefined ? row2[j] : '';
+                        
+                        // If cells are different, add to differences
+                        if (String(cell1) !== String(cell2)) {
+                            const colName = XLSX.utils.encode_col(j);
+                            differences.push([
+                                sheetName,
+                                i+1,
+                                colName,
+                                cell1,
+                                cell2,
+                                'CHANGED'
+                            ]);
+                        }
+                    }
+                }
+            });
+            
+            // Create worksheet from differences array
+            const ws = XLSX.utils.aoa_to_sheet(differences);
+            
+            // Add worksheet to workbook
+            XLSX.utils.book_append_sheet(result, ws, 'Differences');
+            
+            return result;
+        }
+        
+        // Function to read Excel file as ArrayBuffer
+        function readExcelFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(e);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
+        // Main comparison function
+        async function compareFiles() {
+            const file1 = document.getElementById('file1').files[0];
+            const file2 = document.getElementById('file2').files[0];
+            const status = document.getElementById('status');
+            const previewArea = document.getElementById('previewArea');
+            const downloadArea = document.getElementById('downloadArea');
+            const downloadButton = document.getElementById('downloadButton');
+            
+            if (!file1 || !file2) {
+                status.textContent = 'Please upload both files.';
+                return;
+            }
+            
+            try {
+                status.textContent = 'Comparing files...';
+                
+                // Read Excel files
+                const content1 = await readExcelFile(file1);
+                const content2 = await readExcelFile(file2);
+                
+                // Parse workbooks
+                const workbook1 = XLSX.read(content1, {type: 'array'});
+                const workbook2 = XLSX.read(content2, {type: 'array'});
+                
+                // Compare files
+                const resultWorkbook = compareExcelFiles(workbook1, workbook2);
+                
+                // Show preview
+                showDifferencesPreview(resultWorkbook);
+                
+                // Show download area
+                downloadArea.style.display = 'block';
+                downloadButton.style.display = 'inline-block';
+                previewArea.style.display = 'block';
+                
+                // Store result for download
+                window.resultWorkbook = resultWorkbook;
+                
+                status.textContent = 'Comparison complete! Preview shown below.';
+            } catch (error) {
+                console.error('Error comparing files:', error);
+                status.textContent = 'Error comparing files: ' + error.message;
+            }
+        }
+        
+        // Function to show differences in the preview area
+        function showDifferencesPreview(workbook) {
+            const previewHeader = document.getElementById('previewHeader');
+            const previewBody = document.getElementById('previewBody');
+            
+            // Clear existing preview
+            previewHeader.innerHTML = '';
+            previewBody.innerHTML = '';
+            
+            // Get the Differences sheet
+            const sheet = workbook.Sheets['Differences'];
+            
+            // Convert to JSON
+            const jsonData = XLSX.utils.sheet_to_json(sheet, {header: 1});
+            
+            if (jsonData.length <= 1) {
+                previewBody.innerHTML = '<tr><td colspan="6" style="text-align:center">No differences found between the files</td></tr>';
+                return;
+            }
+            
+            // Create header row
+            const headerRow = document.createElement('tr');
+            jsonData[0].forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                headerRow.appendChild(th);
+            });
+            previewHeader.appendChild(headerRow);
+            
+            // Create data rows (limit to 500 rows for preview)
+            const maxRows = Math.min(500, jsonData.length - 1);
+            for (let i = 1; i <= maxRows; i++) {
+                const dataRow = document.createElement('tr');
+                
+                // Get the status for styling
+                const status = jsonData[i][5]; // Status is in the 6th column
+                
+                if (status === 'ADDED') {
+                    dataRow.classList.add('diff-added');
+                } else if (status === 'REMOVED') {
+                    dataRow.classList.add('diff-removed');
+                } else if (status === 'CHANGED') {
+                    dataRow.classList.add('diff-changed');
+                }
+                
+                jsonData[i].forEach(cell => {
+                    const td = document.createElement('td');
+                    td.textContent = cell !== undefined ? cell : '';
+                    dataRow.appendChild(td);
+                });
+                previewBody.appendChild(dataRow);
+            }
+            
+            // Add message if data was truncated
+            if (jsonData.length - 1 > maxRows) {
+                const messageRow = document.createElement('tr');
+                const messageCell = document.createElement('td');
+                messageCell.colSpan = jsonData[0].length;
+                messageCell.textContent = `Showing ${maxRows} of ${jsonData.length - 1} differences. Download for complete results.`;
+                messageCell.style.textAlign = 'center';
+                messageCell.style.fontStyle = 'italic';
+                messageRow.appendChild(messageCell);
+                previewBody.appendChild(messageRow);
+            }
+        }
+        
+        // Download button event
+        document.getElementById('downloadButton').addEventListener('click', () => {
+            if (!window.resultWorkbook) {
+                document.getElementById('status').textContent = 'No comparison results available.';
+                return;
+            }
+            
+            // Generate filename with timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+            const filename = `excel_comparison_${timestamp}.xlsx`;
+            
+            // Write the workbook to a file
+            XLSX.writeFile(window.resultWorkbook, filename);
+            document.getElementById('status').textContent = `File "${filename}" downloaded.`;
+        });
+        
+        // Compare button event
+        document.getElementById('compareButton').addEventListener('click', compareFiles);
+    </script>
+
+</body></html>
