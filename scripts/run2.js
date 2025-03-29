@@ -410,50 +410,84 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     // Get the K-R column index
     const krColIndex = paymentsHubWithKR[0].length - 1;
 
-    // Add Count column based on the COUNTIFS formula from the VBA with improved matching
-    // This is replicating: "=COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!C1,'Payments Hub Transaction'!RC24,'Sales Totals'!C5,'Payments Hub Transaction'!RC27)"
+    // Add Count column based on the specific COUNTIFS formula:
+    // =COUNTIFS('Sales Totals'!$A:$A,'Payments Hub Transaction'!$X2,'Sales Totals'!$B:$B,'Payments Hub Transaction'!$AH2,'Sales Totals'!$E:$E,'Payments Hub Transaction'!$AA2,'Sales Totals'!$G:$G,'Payments Hub Transaction'!$AB2)
     const paymentsHubWithCount = paymentsHubWithKR.map((row, index) => {
       if (index === 0) {
         // Add header for Count
         return [...row, "Count"];
       } else if (row.length > 0) {
-        // Get the date, card brand, and KR value from the current row
-        const hubDate = formatDate(row[dateColIndex]);
-        const hubCardBrand = normalize(row[cardBrandColIndex]);
-        const hubKR = row[krColIndex] !== undefined ? parseFloat(row[krColIndex]) : 0;
+        // We need to access the exact columns used in the COUNTIFS formula
+        // Note: JavaScript is 0-indexed, so we subtract 1 from Excel column indices
+        
+        // Payments Hub columns (using fixed positions from the formula, not header searching)
+        // Convert from Excel column references to 0-based array indices
+        const hubColX = 23;  // Excel column X (24) - 1
+        const hubColAH = 33; // Excel column AH (34) - 1
+        const hubColAA = 26; // Excel column AA (27) - 1
+        const hubColAB = 27; // Excel column AB (28) - 1
+        
+        // Get the values from the appropriate columns
+        // Use safe indexing to avoid errors if columns don't exist
+        const hubValX = row.length > hubColX ? row[hubColX] : "";
+        const hubValAH = row.length > hubColAH ? row[hubColAH] : "";
+        const hubValAA = row.length > hubColAA ? row[hubColAA] : "";
+        const hubValAB = row.length > hubColAB ? row[hubColAB] : "";
+        
+        // Sales Totals columns (from the formula)
+        // Excel column references are 1-indexed, but our arrays are 0-indexed
+        const salesColA = 0;  // Excel column A - 1
+        const salesColB = 1;  // Excel column B - 1
+        const salesColE = 4;  // Excel column E - 1
+        const salesColG = 6;  // Excel column G - 1
         
         // Count matching records in Sales Totals
         let count = 0;
         
         for (let i = 1; i < salesTotalsData.length; i++) {
           const salesRow = salesTotalsData[i];
-          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) {
+          
+          // Skip if row doesn't have enough columns
+          if (salesRow.length <= Math.max(salesColA, salesColB, salesColE, salesColG)) {
             continue;
           }
           
-          const salesCardType = normalize(salesRow[salesNameColIndex]);
-          const salesDate = formatDate(salesRow[salesDateColIndex]);
-          let salesAmount = 0;
+          // Get values from Sales Totals
+          const salesValA = salesRow[salesColA] || "";
+          const salesValB = salesRow[salesColB] || "";
+          const salesValE = salesRow[salesColE] || "";
+          const salesValG = salesRow[salesColG] || "";
           
-          if (salesRow[salesAmountColIndex]) {
-            const amountStr = salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
-            salesAmount = parseFloat(amountStr) || 0;
-          }
+          // Convert values to strings for comparison
+          const normalizeForCompare = (val) => {
+            if (val === null || val === undefined) return "";
+            return val.toString().trim().toLowerCase();
+          };
           
-          // Improve matching logic to match exactly what the COUNTIFS is doing:
-          // The VBA formula is counting where:
-          // 1. Sales Totals date matches Payments Hub date
-          // 2. Sales Totals card type matches Payments Hub card brand
-          // 3. Sales Totals amount matches Payments Hub K-R amount
+          // Parse numeric values for comparison with tolerance
+          const parseAmount = (val) => {
+            if (val === null || val === undefined) return 0;
+            const str = val.toString().replace(/[^\d.-]/g, "");
+            return parseFloat(str) || 0;
+          };
           
-          const dateMatches = compareDates(hubDate, salesDate);
-          const cardMatches = compareCardBrands(hubCardBrand, salesCardType);
+          // For date values, we need to ensure consistent formatting
+          const formatDateForCompare = (val) => {
+            return formatDate(val);
+          };
           
-          // Use a more generous tolerance for floating point comparison (0.02 = 2 cents)
-          // This helps with rounding differences between Excel and JavaScript
-          const amountMatches = Math.abs(hubKR - salesAmount) < 0.02;
+          // Compare values based on likely data types
+          // Assuming A and X are dates, B and AH are card types, E and AA are amounts, G and AB are amounts
+          const dateMatches = formatDateForCompare(salesValA) === formatDateForCompare(hubValX);
+          const cardMatches = normalizeForCompare(salesValB) === normalizeForCompare(hubValAH);
           
-          if (dateMatches && cardMatches && amountMatches) {
+          // For amounts, use tolerance to account for floating point differences
+          const tolerance = 0.01;
+          const amount1Matches = Math.abs(parseAmount(salesValE) - parseAmount(hubValAA)) < tolerance;
+          const amount2Matches = Math.abs(parseAmount(salesValG) - parseAmount(hubValAB)) < tolerance;
+          
+          // Only increment count if ALL criteria match (this is how COUNTIFS works)
+          if (dateMatches && cardMatches && amount1Matches && amount2Matches) {
             count++;
           }
         }
@@ -467,11 +501,12 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const countColIndex = paymentsHubWithCount[0].length - 1;
 
     // Create the final output data with selected columns
+    // IMPORTANT: Only include rows where Count = 0 (matches the requirement)
     const finalData = paymentsHubWithCount.filter((row, index) => {
-      // Include header row
+      // Always include header row
       if (index === 0) return true;
       
-      // Filter rows where Count = 0 (matches VBA behavior)
+      // Only include rows where Count = 0 (exact match to the requirement)
       const count = parseInt(row[countColIndex]) || 0;
       return count === 0;
     }).map((row, index) => {
