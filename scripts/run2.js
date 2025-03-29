@@ -141,21 +141,20 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // IMPORTANT: Filter records where Count > 0
-    // This is inverse of the VBA's filter: "Columns("AB:AB").AutoFilter Field:=28, Criteria1:="0""
-    // which filtered out rows with Count = 0, so we want to keep rows with Count > 0
+    // IMPORTANT: Filter records where Count = 0 
+    // This exactly matches the VBA's filter: "Columns("AB:AB").AutoFilter Field:=28, Criteria1:="0""
     const countColIndex = paymentsHubWithCount[0].length - 1;
     const filteredRows = [];
     
     // Always include the header row
     filteredRows.push(paymentsHubWithCount[0]);
     
-    // Only include rows where Count is non-zero
+    // Only include rows where Count is ZERO (matching the VBA filter)
     for (let i = 1; i < paymentsHubWithCount.length; i++) {
       const row = paymentsHubWithCount[i];
       if (row.length > countColIndex) {
         const countValue = parseInt(row[countColIndex]) || 0;
-        if (countValue > 0) {
+        if (countValue === 0) {
           filteredRows.push(row);
         }
       }
