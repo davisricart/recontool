@@ -94,7 +94,7 @@ function compareAndDisplayData(XLSX, file1, file2) {
     const columnsToKeep = ["Date", "Customer Name", "Total Transaction Amount", "Cash Discounting Amount", "Card Brand"];
     
     // Define the new columns to add
-    const newColumns = ["K-R", "Count"];
+    const newColumns = ["K-R", "Count", "Final Count"];
     
     // Create result array starting with the header row (including new columns)
     const resultData = [columnsToKeep.concat(newColumns)];
@@ -200,8 +200,14 @@ function compareAndDisplayData(XLSX, file1, file2) {
         // Add count value
         filteredRow.push(countMatches.toString());
         
+        // Add empty Final Count column for now (will be filled later if needed)
+        filteredRow.push("");
+        
         resultData.push(filteredRow);
     });
+    
+    // Store first file data for later comparison with second file
+    const firstFileData = resultData.slice(1); // Skip header row
     
     // Process the second file for display (if provided)
     // ================================================
@@ -214,9 +220,90 @@ function compareAndDisplayData(XLSX, file1, file2) {
         resultData.push(secondFileHeadersWithCount2);
         
         // Process all data rows from second file
-        jsonData2.forEach(row => {
-            // Copy the row and add empty Count2 column
-            const processedRow = [...row, ""];
+        jsonData2.forEach((row, rowIndex) => {
+            // Copy the row
+            const processedRow = [...row];
+            
+            // Perform COUNTIFS-like functionality for Count2 column
+            let countMatches = 0;
+            
+            // Get values from second file row for comparison
+            let secondFileDate = null;
+            let secondFileName = "";
+            let secondFileAmount = 0;
+            
+            // Extract date from second file
+            if (dateClosedIndex !== -1 && dateClosedIndex < row.length) {
+                let dateValue = row[dateClosedIndex];
+                if (typeof dateValue === 'string') {
+                    try {
+                        secondFileDate = new Date(dateValue);
+                    } catch (e) {
+                        secondFileDate = null;
+                    }
+                } else if (dateValue instanceof Date) {
+                    secondFileDate = dateValue;
+                }
+            }
+            
+            // Extract name from second file
+            if (nameIndex !== -1 && nameIndex < row.length) {
+                secondFileName = String(row[nameIndex] || "").trim().toLowerCase();
+            }
+            
+            // Extract amount from second file
+            if (amountIndex !== -1 && amountIndex < row.length) {
+                let amountValue = row[amountIndex];
+                if (typeof amountValue === 'string') {
+                    amountValue = amountValue.replace(/[^0-9.-]+/g, "");
+                }
+                secondFileAmount = parseFloat(amountValue) || 0;
+            }
+            
+            // Format date for string comparison
+            const secondFileDateStr = secondFileDate instanceof Date ? 
+                `${secondFileDate.getFullYear()}-${String(secondFileDate.getMonth() + 1).padStart(2, '0')}-${String(secondFileDate.getDate()).padStart(2, '0')}` : '';
+            
+            // Compare with each row from first file
+            firstFileData.forEach(firstFileRow => {
+                // Extract date, card brand, and K-R from first file row
+                let firstFileDate = null;
+                if (firstFileRow[0]) { // Date is at index 0
+                    // Try to parse date from MM/DD/YYYY format
+                    const parts = firstFileRow[0].split('/');
+                    if (parts.length === 3) {
+                        const month = parseInt(parts[0]) - 1;
+                        const day = parseInt(parts[1]);
+                        const year = parseInt(parts[2]);
+                        firstFileDate = new Date(year, month, day);
+                    }
+                }
+                
+                const firstFileDateStr = firstFileDate instanceof Date ? 
+                    `${firstFileDate.getFullYear()}-${String(firstFileDate.getMonth() + 1).padStart(2, '0')}-${String(firstFileDate.getDate()).padStart(2, '0')}` : '';
+                
+                const firstFileCardBrand = String(firstFileRow[4] || "").trim().toLowerCase(); // Card Brand is at index 4
+                const firstFileKR = parseFloat(firstFileRow[5] || 0); // K-R is at index 5
+                
+                // Check if all conditions match
+                const dateMatches = firstFileDateStr && secondFileDateStr && 
+                    firstFileDateStr === secondFileDateStr;
+                
+                const nameMatches = secondFileName && firstFileCardBrand && (
+                    firstFileCardBrand.includes(secondFileName) || 
+                    secondFileName.includes(firstFileCardBrand)
+                );
+                
+                const amountMatches = Math.abs(firstFileKR - secondFileAmount) < 0.01;
+                
+                if (dateMatches && nameMatches && amountMatches) {
+                    countMatches++;
+                }
+            });
+            
+            // Add count value to Count2 column
+            processedRow.push(countMatches.toString());
+            
             resultData.push(processedRow);
         });
     }
