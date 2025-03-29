@@ -23,7 +23,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       sheetStubs: true
     });
 
-    // Get sheets from the workbooks
+    // Get sheets from the workbooks - handle different sheet names
     const paymentsHubSheet = workbook1.Sheets[workbook1.SheetNames[0]];
     const salesTotalsSheet = workbook2.Sheets[workbook2.SheetNames[0]];
 
@@ -68,9 +68,19 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
         // Add header for K-R
         return [...row, "K-R"];
       } else if (row.length > 0) {
-        // Calculate K-R value for data rows
-        const totalAmount = parseFloat(row[totalAmountColIndex]) || 0;
-        const discountAmount = parseFloat(row[discountingAmountColIndex]) || 0;
+        // Parse currency values properly by removing $ signs and other non-numeric characters
+        let totalAmount = 0;
+        if (row[totalAmountColIndex]) {
+          const totalStr = row[totalAmountColIndex].toString().replace(/[^\d.-]/g, '');
+          totalAmount = parseFloat(totalStr) || 0;
+        }
+        
+        let discountAmount = 0;
+        if (row[discountingAmountColIndex]) {
+          const discountStr = row[discountingAmountColIndex].toString().replace(/[^\d.-]/g, '');
+          discountAmount = parseFloat(discountStr) || 0;
+        }
+        
         const krValue = totalAmount - discountAmount;
         return [...row, krValue];
       }
@@ -78,32 +88,11 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     });
 
     // Process Sales Totals data
-    const salesDateColIndex = findColumnIndex(salesTotalsData[0], "Date");
-    const salesCardBrandColIndex = findColumnIndex(salesTotalsData[0], "Card Brand");
+    // For Sales Totals, the structure is different - looking for Name (card type) and Amount columns
+    const salesCardTypeIndex = findColumnIndex(salesTotalsData[0], "Name");
+    const salesDateIndex = findColumnIndex(salesTotalsData[0], "Date Closed");
+    const salesAmountIndex = findColumnIndex(salesTotalsData[0], "Amount");
     
-    // Find or create Amount column in Sales Totals
-    let salesAmountColIndex = findColumnIndex(salesTotalsData[0], "Amount");
-    let processedSalesData = salesTotalsData;
-    
-    if (salesAmountColIndex === -1) {
-      // Look for E column as a fallback, similar to VBA macro logic
-      const salesEColIndex = findColumnIndex(salesTotalsData[0], "E");
-      
-      if (salesEColIndex !== -1) {
-        // Add Amount column using E values
-        processedSalesData = salesTotalsData.map((row, index) => {
-          if (index === 0) {
-            return [...row, "Amount"];
-          } else if (row.length > 0) {
-            const eValue = parseFloat(row[salesEColIndex]) || 0;
-            return [...row, eValue];
-          }
-          return row;
-        });
-        salesAmountColIndex = processedSalesData[0].length - 1;
-      }
-    }
-
     // Add Count column to track matching records
     const krColIndex = paymentsHubWithKR[0].length - 1;
     const paymentsHubWithCount = paymentsHubWithKR.map((row, index) => {
@@ -111,22 +100,26 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
         // Add header for Count
         return [...row, "Count"];
       } else if (row.length > 0) {
-        // Calculate Count value by matching records
+        // Count matching transactions - based on the Card Brand and date
         let count = 0;
         
-        // Count matching rows between the two sheets
-        for (let i = 1; i < processedSalesData.length; i++) {
-          const salesRow = processedSalesData[i];
-          if (
-            salesRow && 
-            salesRow[salesDateColIndex] && 
-            salesRow[salesCardBrandColIndex] &&
-            row[dateColIndex] && 
-            row[cardBrandColIndex] &&
-            formatCompareValue(row[dateColIndex]) === formatCompareValue(salesRow[salesDateColIndex]) &&
-            formatCompareValue(row[cardBrandColIndex]) === formatCompareValue(salesRow[salesCardBrandColIndex])
-          ) {
-            count++;
+        // Compare hub date with sales date, considering different formats
+        const hubDate = formatDate(row[dateColIndex]);
+        const cardBrand = row[cardBrandColIndex] ? row[cardBrandColIndex].toString().toLowerCase().trim() : "";
+        
+        for (let i = 1; i < salesTotalsData.length; i++) {
+          const salesRow = salesTotalsData[i];
+          if (salesRow && salesRow.length > Math.max(salesCardTypeIndex, salesDateIndex)) {
+            const salesDate = formatDate(salesRow[salesDateIndex]);
+            const salesCardType = salesRow[salesCardTypeIndex] ? 
+              salesRow[salesCardTypeIndex].toString().toLowerCase().trim() : "";
+            
+            // Match based on card type and date
+            if (hubDate && salesDate && salesCardType && 
+                salesCardType === cardBrand && 
+                salesDate === hubDate) {
+              count++;
+            }
           }
         }
         
@@ -135,20 +128,19 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Filter to create the final data, keeping only rows with Count > 0
+    // Filter to create the final data - include all rows for now, even if count is 0
     const countColIndex = paymentsHubWithCount[0].length - 1;
-    const filteredRows = paymentsHubWithCount.filter((row, index) => {
-      return index === 0 || (row[countColIndex] && parseInt(row[countColIndex]) > 0);
-    });
+    // We won't filter based on count for now
+    const filteredRows = paymentsHubWithCount;
 
-    // Select visible columns as in the VBA (date, customer name, total amount, discount, card brand, K-R)
+    // Select visible columns for the report
     const finalData = filteredRows.map(row => {
       return [
-        row[dateColIndex],
-        row[customerNameColIndex],
-        formatCurrency(row[totalAmountColIndex]),
-        formatCurrency(row[discountingAmountColIndex]),
-        row[cardBrandColIndex],
+        row[dateColIndex] || "",
+        row[customerNameColIndex] || "",
+        formatCurrencyString(row[totalAmountColIndex]),
+        formatCurrencyString(row[discountingAmountColIndex]),
+        row[cardBrandColIndex] || "",
         formatCurrency(row[krColIndex]) // K-R
       ];
     });
@@ -158,30 +150,38 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       finalData[0][5] = "Total (-) Fee";
     }
 
-    // Calculate card brand totals for reconciliation
-    const paymentsHubTotals = calculateCardTotals(paymentsHubWithCount, cardBrandColIndex, krColIndex);
-    const salesTotals = calculateCardTotals(processedSalesData, salesCardBrandColIndex, salesAmountColIndex);
+    // Calculate card brand totals from both data sources
+    const paymentsHubTotals = calculateCardTotalsFromPaymentsHub(paymentsHubWithCount, cardBrandColIndex, krColIndex);
+    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesCardTypeIndex, salesAmountIndex);
+
+    // Calculate differences
+    const differences = {
+      visa: (paymentsHubTotals.visa || 0) - (salesTotals.visa || 0),
+      mastercard: (paymentsHubTotals.mastercard || 0) - (salesTotals.mastercard || 0),
+      'american express': (paymentsHubTotals['american express'] || 0) - (salesTotals['american express'] || 0),
+      discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0)
+    };
 
     // Create reconciliation summary 
     const summaryData = [
       ["Hub Report", "Total", "", "Sales Report", "Total", "", "Difference"],
       [
         "Visa", 
-        formatCurrency(paymentsHubTotals['visa'] || 0), 
+        formatCurrency(paymentsHubTotals.visa || 0), 
         "", 
         "Visa", 
-        formatCurrency(salesTotals['visa'] || 0), 
+        formatCurrency(salesTotals.visa || 0), 
         "", 
-        formatCurrency((paymentsHubTotals['visa'] || 0) - (salesTotals['visa'] || 0))
+        formatCurrency(differences.visa || 0)
       ],
       [
         "Mastercard", 
-        formatCurrency(paymentsHubTotals['mastercard'] || 0), 
+        formatCurrency(paymentsHubTotals.mastercard || 0), 
         "", 
         "Mastercard", 
-        formatCurrency(salesTotals['mastercard'] || 0), 
+        formatCurrency(salesTotals.mastercard || 0), 
         "", 
-        formatCurrency((paymentsHubTotals['mastercard'] || 0) - (salesTotals['mastercard'] || 0))
+        formatCurrency(differences.mastercard || 0)
       ],
       [
         "American Express", 
@@ -190,16 +190,16 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
         "American Express", 
         formatCurrency(salesTotals['american express'] || 0), 
         "", 
-        formatCurrency((paymentsHubTotals['american express'] || 0) - (salesTotals['american express'] || 0))
+        formatCurrency(differences['american express'] || 0)
       ],
       [
         "Discover", 
-        formatCurrency(paymentsHubTotals['discover'] || 0), 
+        formatCurrency(paymentsHubTotals.discover || 0), 
         "", 
         "Discover", 
-        formatCurrency(salesTotals['discover'] || 0), 
+        formatCurrency(salesTotals.discover || 0), 
         "", 
-        formatCurrency((paymentsHubTotals['discover'] || 0) - (salesTotals['discover'] || 0))
+        formatCurrency(differences.discover || 0)
       ]
     ];
 
@@ -233,29 +233,43 @@ function findColumnIndex(headerRow, columnName) {
   if (!headerRow) return -1;
   
   return headerRow.findIndex(header =>
-    header && header.toString().toLowerCase() === columnName.toLowerCase()
+    header && header.toString().toLowerCase().trim() === columnName.toLowerCase().trim()
   );
 }
 
 /**
- * Helper function to calculate total by card brand
+ * Helper function to calculate card totals from Payments Hub data
  */
-function calculateCardTotals(data, cardBrandColIndex, amountColIndex) {
-  const totals = {};
+function calculateCardTotalsFromPaymentsHub(data, cardBrandColIndex, krColIndex) {
+  const totals = {
+    visa: 0,
+    mastercard: 0,
+    'american express': 0,
+    discover: 0
+  };
   
-  if (cardBrandColIndex === -1 || amountColIndex === -1) {
+  if (cardBrandColIndex === -1 || krColIndex === -1) {
     return totals;
   }
   
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    if (row && row.length > Math.max(cardBrandColIndex, amountColIndex)) {
+    if (row && row.length > Math.max(cardBrandColIndex, krColIndex)) {
       if (row[cardBrandColIndex]) {
-        const cardBrand = formatCompareValue(row[cardBrandColIndex]);
-        const amount = parseFloat(row[amountColIndex]) || 0;
+        const cardBrand = row[cardBrandColIndex].toString().toLowerCase().trim();
+        const amount = parseFloat(row[krColIndex]) || 0;
         
         if (!isNaN(amount)) {
-          totals[cardBrand] = (totals[cardBrand] || 0) + amount;
+          // Add amounts to the appropriate card brand
+          if (cardBrand === 'visa') {
+            totals.visa += amount;
+          } else if (cardBrand === 'mastercard') {
+            totals.mastercard += amount;
+          } else if (cardBrand === 'american express') {
+            totals['american express'] += amount;
+          } else if (cardBrand === 'discover') {
+            totals.discover += amount;
+          }
         }
       }
     }
@@ -265,21 +279,138 @@ function calculateCardTotals(data, cardBrandColIndex, amountColIndex) {
 }
 
 /**
- * Helper function to format values for comparison
+ * Helper function to calculate card totals from Sales Totals data
  */
-function formatCompareValue(value) {
-  if (value === null || value === undefined) return '';
-  return value.toString().toLowerCase().trim();
+function calculateCardTotalsFromSales(data, cardTypeIndex, amountIndex) {
+  const totals = {
+    visa: 0,
+    mastercard: 0,
+    'american express': 0,
+    discover: 0
+  };
+  
+  if (cardTypeIndex === -1 || amountIndex === -1) {
+    return totals;
+  }
+  
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row && row.length > Math.max(cardTypeIndex, amountIndex)) {
+      if (row[cardTypeIndex]) {
+        const cardType = row[cardTypeIndex].toString().toLowerCase().trim();
+        
+        // Parse the amount, removing currency symbols and spaces
+        let amount = 0;
+        if (row[amountIndex]) {
+          const amountStr = row[amountIndex].toString().replace(/[^\d.-]/g, '');
+          amount = parseFloat(amountStr) || 0;
+        }
+        
+        if (!isNaN(amount)) {
+          // Add amounts to the appropriate card type
+          if (cardType === 'visa') {
+            totals.visa += amount;
+          } else if (cardType === 'mastercard') {
+            totals.mastercard += amount;
+          } else if (cardType === 'american express') {
+            totals['american express'] += amount;
+          } else if (cardType === 'discover') {
+            totals.discover += amount;
+          }
+        }
+      }
+    }
+  }
+  
+  return totals;
 }
 
 /**
- * Helper function to format currency values
+ * Helper function to format date values for comparison
+ * Handles different date formats
+ */
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  
+  // Try to extract date components from various formats
+  // First, clean up the string
+  let cleanDateStr = dateStr.toString().trim();
+  
+  // Handle mm/dd/yyyy format
+  const dateRegex1 = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+  const dateRegex2 = /(\d{1,2})\/(\d{1,2})\/(\d{2})/;
+  // Handle yyyy-mm-dd format
+  const dateRegex3 = /(\d{4})-(\d{1,2})-(\d{1,2})/;
+  // Handle timestamp format like "3/13/25 19:58"
+  const timestampRegex = /(\d{1,2})\/(\d{1,2})\/(\d{2})\s+\d{1,2}:\d{1,2}/;
+  
+  let month, day, year;
+  
+  if (timestampRegex.test(cleanDateStr)) {
+    const match = cleanDateStr.match(timestampRegex);
+    month = match[1].padStart(2, '0');
+    day = match[2].padStart(2, '0');
+    year = match[3].length === 2 ? (match[3] < '50' ? '20' + match[3] : '19' + match[3]) : match[3];
+  } else if (dateRegex1.test(cleanDateStr)) {
+    const match = cleanDateStr.match(dateRegex1);
+    month = match[1].padStart(2, '0');
+    day = match[2].padStart(2, '0');
+    year = match[3];
+  } else if (dateRegex2.test(cleanDateStr)) {
+    const match = cleanDateStr.match(dateRegex2);
+    month = match[1].padStart(2, '0');
+    day = match[2].padStart(2, '0');
+    year = match[3].length === 2 ? (match[3] < '50' ? '20' + match[3] : '19' + match[3]) : match[3];
+  } else if (dateRegex3.test(cleanDateStr)) {
+    const match = cleanDateStr.match(dateRegex3);
+    year = match[1];
+    month = match[2].padStart(2, '0');
+    day = match[3].padStart(2, '0');
+  } else {
+    // Try to use JavaScript's Date parsing as a fallback
+    try {
+      const date = new Date(cleanDateStr);
+      if (!isNaN(date.getTime())) {
+        month = (date.getMonth() + 1).toString().padStart(2, '0');
+        day = date.getDate().toString().padStart(2, '0');
+        year = date.getFullYear().toString();
+      } else {
+        return cleanDateStr; // Return original if parsing fails
+      }
+    } catch (e) {
+      return cleanDateStr; // Return original if parsing fails
+    }
+  }
+  
+  // Return normalized format for comparison: MM/DD/YYYY
+  return `${month}/${day}/${year}`;
+}
+
+/**
+ * Helper function to format currency values for display
  */
 function formatCurrency(value) {
   if (value === null || value === undefined || isNaN(parseFloat(value))) {
-    return '';
+    return '0.00';
   }
   
   const numValue = parseFloat(value);
+  return numValue.toFixed(2);
+}
+
+/**
+ * Helper function to format currency string values
+ */
+function formatCurrencyString(value) {
+  if (!value) return '';
+  
+  // Extract the numeric part from currency string
+  const numStr = value.toString().replace(/[^\d.-]/g, '');
+  const numValue = parseFloat(numStr);
+  
+  if (isNaN(numValue)) {
+    return '';
+  }
+  
   return numValue.toFixed(2);
 }
