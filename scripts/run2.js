@@ -134,21 +134,28 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const filteredRows = paymentsHubWithCount;
 
     // Select visible columns for the report
-    const finalData = filteredRows.map(row => {
-      return [
-        row[dateColIndex] || "",
-        row[customerNameColIndex] || "",
-        formatCurrencyString(row[totalAmountColIndex]),
-        formatCurrencyString(row[discountingAmountColIndex]),
-        row[cardBrandColIndex] || "",
-        formatCurrency(row[krColIndex]) // K-R
-      ];
+    const finalData = filteredRows.map((row, index) => {
+      if (index === 0) {
+        // Explicitly set all headers
+        return [
+          "Date",
+          "Customer Name",
+          "Total Transaction Amount",
+          "Cash Discounting Amount",
+          "Card Brand",
+          "Total (-) Fee"
+        ];
+      } else {
+        return [
+          row[dateColIndex] || "",
+          row[customerNameColIndex] || "",
+          formatCurrencyString(row[totalAmountColIndex]),
+          formatCurrencyString(row[discountingAmountColIndex]),
+          row[cardBrandColIndex] || "",
+          formatCurrency(row[krColIndex]) // K-R
+        ];
+      }
     });
-
-    // Update header for the K-R column
-    if (finalData.length > 0) {
-      finalData[0][5] = "Total (-) Fee";
-    }
 
     // Calculate card brand totals from both data sources
     const paymentsHubTotals = calculateCardTotalsFromPaymentsHub(paymentsHubWithCount, cardBrandColIndex, krColIndex);
@@ -162,44 +169,44 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0)
     };
 
-    // Create reconciliation summary 
+    // Create reconciliation summary - using integer values for the totals to match expected format
     const summaryData = [
       ["Hub Report", "Total", "", "Sales Report", "Total", "", "Difference"],
       [
         "Visa", 
-        formatCurrency(paymentsHubTotals.visa || 0), 
+        Math.round(paymentsHubTotals.visa || 0).toString(), 
         "", 
         "Visa", 
-        formatCurrency(salesTotals.visa || 0), 
+        Math.round(salesTotals.visa || 0).toString(), 
         "", 
-        formatCurrency(differences.visa || 0)
+        Math.round(differences.visa || 0).toString()
       ],
       [
         "Mastercard", 
-        formatCurrency(paymentsHubTotals.mastercard || 0), 
+        Math.round(paymentsHubTotals.mastercard || 0).toString(), 
         "", 
         "Mastercard", 
-        formatCurrency(salesTotals.mastercard || 0), 
+        Math.round(salesTotals.mastercard || 0).toString(), 
         "", 
-        formatCurrency(differences.mastercard || 0)
+        Math.round(differences.mastercard || 0).toString()
       ],
       [
         "American Express", 
-        formatCurrency(paymentsHubTotals['american express'] || 0), 
+        Math.round(paymentsHubTotals['american express'] || 0).toString(), 
         "", 
         "American Express", 
-        formatCurrency(salesTotals['american express'] || 0), 
+        Math.round(salesTotals['american express'] || 0).toString(), 
         "", 
-        formatCurrency(differences['american express'] || 0)
+        Math.round(differences['american express'] || 0).toString()
       ],
       [
         "Discover", 
-        formatCurrency(paymentsHubTotals.discover || 0), 
+        Math.round(paymentsHubTotals.discover || 0).toString(), 
         "", 
         "Discover", 
-        formatCurrency(salesTotals.discover || 0), 
+        Math.round(salesTotals.discover || 0).toString(), 
         "", 
-        formatCurrency(differences.discover || 0)
+        Math.round(differences.discover || 0).toString()
       ]
     ];
 
@@ -388,18 +395,19 @@ function formatDate(dateStr) {
 
 /**
  * Helper function to format currency values for display
+ * Includes $ sign and spacing to match the expected format
  */
 function formatCurrency(value) {
   if (value === null || value === undefined || isNaN(parseFloat(value))) {
-    return '0.00';
+    return '$0.00 ';
   }
   
   const numValue = parseFloat(value);
-  return numValue.toFixed(2);
-}
+  return '
 
 /**
  * Helper function to format currency string values
+ * Preserves original currency format with $ sign for display
  */
 function formatCurrencyString(value) {
   if (!value) return '';
@@ -412,5 +420,29 @@ function formatCurrencyString(value) {
     return '';
   }
   
-  return numValue.toFixed(2);
+  // Return with dollar sign to match the expected format
+  return '
+ + numValue.toFixed(2) + ' ';
+}
+ + numValue.toFixed(2) + ' ';
+}
+
+/**
+ * Helper function to format currency string values
+ * Preserves original currency format with $ sign for display
+ */
+function formatCurrencyString(value) {
+  if (!value) return '';
+  
+  // Extract the numeric part from currency string
+  const numStr = value.toString().replace(/[^\d.-]/g, '');
+  const numValue = parseFloat(numStr);
+  
+  if (isNaN(numValue)) {
+    return '';
+  }
+  
+  // Return with dollar sign to match the expected format
+  return '
+ + numValue.toFixed(2) + ' ';
 }
