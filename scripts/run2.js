@@ -190,10 +190,9 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Get the Count and Final Count column indices
-    const countColIndex = paymentsHubWithCount[0].length - 1;
+    // Get the Final Count column index
     const finalCountColIndex = paymentsHubWithFinalCount[0].length - 1;
-    
+
     // Filter rows where Final Count = 0
     // This replicates the VBA filter: "Columns("AC:AC").AutoFilter Field:=29, Criteria1:="0""
     const filteredRows = [paymentsHubWithFinalCount[0]]; // Always include header row
