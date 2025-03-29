@@ -36,13 +36,13 @@ function compareAndDisplayData(XLSX, file1, file2) {
         const filteredRow = [];
         
         columnsToKeep.forEach(column => {
-            // For Date column, format as YYYY-MM-DD if it's a date object
+            // For Date column, format as MM/DD/YYYY if it's a date object
             if (column === "Date" && row[column] instanceof Date) {
                 const date = row[column];
                 const year = date.getFullYear();
                 const month = String(date.getMonth() + 1).padStart(2, '0');
                 const day = String(date.getDate()).padStart(2, '0');
-                filteredRow.push(`${year}-${month}-${day}`);
+                filteredRow.push(`${month}/${day}/${year}`);
             } else {
                 // For other columns, just add the value (or empty string if not present)
                 filteredRow.push(row[column] !== undefined ? row[column] : "");
