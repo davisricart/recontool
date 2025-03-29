@@ -49,12 +49,39 @@ function compareAndDisplayData(XLSX, file1, file2) {
             }
         });
         
-        // Add empty values for K-R and Count columns
-        filteredRow.push(""); // K-R column (empty by default)
-        filteredRow.push(""); // Count column (empty by default)
+        // Calculate K-R value (Total Transaction Amount - Cash Discounting Amount)
+        const totalAmount = parseFloat(row["Total Transaction Amount"]) || 0;
+        const discountAmount = parseFloat(row["Cash Discounting Amount"]) || 0;
+        const krValue = totalAmount - discountAmount;
+        
+        // Add K-R value (formatted to 2 decimal places)
+        filteredRow.push(krValue.toFixed(2));
+        
+        // Add empty Count column
+        filteredRow.push("");
         
         resultData.push(filteredRow);
     });
+    
+    // Add an extra row at the end with the total in the K-R column
+    const totalRow = ["", "", "", "", "TOTAL:"];
+    
+    // Calculate sum of all K-R values
+    let krTotal = 0;
+    for (let i = 1; i < resultData.length; i++) {
+        // Get K-R value from each row (at 5th index after the 5 initial columns)
+        const krValue = parseFloat(resultData[i][5]) || 0;
+        krTotal += krValue;
+    }
+    
+    // Add the total to the K-R column position
+    totalRow.push(krTotal.toFixed(2));
+    
+    // Add empty Count cell
+    totalRow.push("");
+    
+    // Add the total row to the result data
+    resultData.push(totalRow);
     
     return resultData;
 }
