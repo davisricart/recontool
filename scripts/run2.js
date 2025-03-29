@@ -95,10 +95,8 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const salesDateColIndex = findColumnIndex(salesTotalsData[0], "Date Closed");
     const salesAmountColIndex = findColumnIndex(salesTotalsData[0], "Amount");
     
-    // Add Count column based on the COUNTIFS formula from the VBA:
-    // "=COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!C1,'Payments Hub Transaction'!RC24,'Sales Totals'!C5,'Payments Hub Transaction'!RC27)"
+    // Add Count column based on matching records
     const krColIndex = paymentsHubWithKR[0].length - 1;
-    
     const paymentsHubWithCount = paymentsHubWithKR.map((row, index) => {
       if (index === 0) {
         // Add header for Count
@@ -141,6 +139,9 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       }
       return row;
     });
+    
+    // Define countColIndex for use in Final Count calculation
+    const countColIndex = paymentsHubWithCount[0].length - 1;
 
     // The Count column index (AB) is at position length-1 in the current data array
     const countColIndex = paymentsHubWithCount[0].length - 1;
