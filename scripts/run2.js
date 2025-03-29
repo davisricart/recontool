@@ -70,7 +70,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const salesAmountColIndex = findColumnIndex(salesTotalsData[0], "Amount");
 
     // Calculate K-R (Total Transaction Amount - Cash Discounting Amount)
-    // This matches the VBA: "Range("AA2").FormulaR1C1 = "=RC[-16]-RC[-9]""
+    // This matches the VBA: "Range("AA1").FormulaR1C1 = "K-R" and Range("AA2").FormulaR1C1 = "=RC[-16]-RC[-9]""
     const paymentsHubWithKR = paymentsHubData.map((row, index) => {
       if (index === 0) {
         // Add header for K-R
@@ -95,43 +95,44 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
+    // Get the K-R column index for later use
+    const krColIndex = paymentsHubWithKR[0].length - 1;
+
     // Add Count column based on the COUNTIFS formula from the VBA:
     // "=COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!C1,'Payments Hub Transaction'!RC24,'Sales Totals'!C5,'Payments Hub Transaction'!RC27)"
-    const krColIndex = paymentsHubWithKR[0].length - 1;
+    // This corresponds to matching the Sales Totals card type, date, and amount with Payments Hub data
     const paymentsHubWithCount = paymentsHubWithKR.map((row, index) => {
       if (index === 0) {
         // Add header for Count
         return [...row, "Count"];
       } else if (row.length > 0) {
-        // Calculate count based on matching records
-        let count = 0;
-        
-        // Get values from Payments Hub
+        // Get the date, card brand, and KR value from the current row
         const hubDate = formatDate(row[dateColIndex]);
         const hubCardBrand = normalize(row[cardBrandColIndex]);
-        const hubKR = parseFloat(row[krColIndex]) || 0;
+        const hubKR = row[krColIndex] !== undefined ? parseFloat(row[krColIndex]) : 0;
         
-        // Check Sales Totals for matches
+        // Count matching records in Sales Totals
+        let count = 0;
+        
         for (let i = 1; i < salesTotalsData.length; i++) {
           const salesRow = salesTotalsData[i];
-          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) continue;
+          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) {
+            continue;
+          }
           
           const salesCardType = normalize(salesRow[salesNameColIndex]);
           const salesDate = formatDate(salesRow[salesDateColIndex]);
-          
-          // Parse the amount
           let salesAmount = 0;
+          
           if (salesRow[salesAmountColIndex]) {
             const amountStr = salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
             salesAmount = parseFloat(amountStr) || 0;
           }
           
-          // Match on date, card type and similar amount
-          if (hubDate && salesDate && 
-              hubCardBrand && salesCardType && 
-              salesDate === hubDate && 
-              salesCardType === hubCardBrand &&
-              Math.abs(salesAmount - hubKR) < 0.01) {
+          // Match on date, card type and amount (with small tolerance for floating point differences)
+          if (hubDate === salesDate && 
+              hubCardBrand === salesCardType && 
+              Math.abs(hubKR - salesAmount) < 0.01) {
             count++;
           }
         }
@@ -141,206 +142,172 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Get the Count column index for use in the Final Count calculation
+    // Filter rows where Count = 0 (this matches the VBA filter operation)
+    // "Columns("AB:AB").AutoFilter Field:=28, Criteria1:="0""
     const countColIndex = paymentsHubWithCount[0].length - 1;
     
-    // Add the Final Count column (AC) based on the formula in your VBA code
-    // "=COUNTIFS('Sales Totals'!C1,'Payments Hub Transaction'!RC24,'Sales Totals'!C2,'Payments Hub Transaction'!RC34,'Sales Totals'!C5,'Payments Hub Transaction'!RC27,'Sales Totals'!C7,'Payments Hub Transaction'!RC28)"
-    // This compares:
-    // - 'Sales Totals'!C1 (column A) with 'Payments Hub Transaction'!RC24 (column X)
-    // - 'Sales Totals'!C2 (column B) with 'Payments Hub Transaction'!RC34 (column AH)
-    // - 'Sales Totals'!C5 (column E) with 'Payments Hub Transaction'!RC27 (column AA)
-    // - 'Sales Totals'!C7 (column G) with 'Payments Hub Transaction'!RC28 (column AB)
+    // Create the Final data by filtering rows where Count = 0
+    const finalRows = [paymentsHubWithCount[0]]; // Always include header row
     
-    const paymentsHubWithFinalCount = paymentsHubWithCount.map((row, index) => {
-      if (index === 0) {
-        // Add header for Final Count
-        return [...row, "Final Count"];
-      } else if (row.length > 0) {
-        // Calculate Final Count based on the exact criteria in the VBA COUNTIFS formula
-        let finalCount = 0;
-        
-        // Get values from Payments Hub
-        const cardBrand = row[cardBrandColIndex] ? row[cardBrandColIndex].toString().toLowerCase().trim() : "";
-        // For date, use column AH (index 33) if it exists, otherwise use column A
-        const dateValue = row[33] !== undefined && row[33] !== "" ? row[33] : row[dateColIndex];
-        const date = dateValue ? formatDate(dateValue) : "";
-        // For K-R value, use column AA (index 26)
-        const krValue = row[26] !== undefined ? parseFloat(row[26].toString().replace(/[^\d.-]/g, "")) : null;
-        // For Count, use column AB (index 27)
-        const count = row[countColIndex] !== undefined ? parseInt(row[countColIndex].toString()) : null;
-        
-        // Check Sales Totals for matches using the exact criteria from the VBA formula
-        for (let i = 1; i < salesTotalsData.length; i++) {
-          const salesRow = salesTotalsData[i];
-          // Need to have at least column G (index 6)
-          if (salesRow.length <= 6) continue;
-          
-          // Column A (index 0) - Name/Card Type
-          const salesCardType = salesRow[salesNameColIndex] ? salesRow[salesNameColIndex].toString().toLowerCase().trim() : "";
-          // Column B (index 1) - Date Closed
-          const salesDate = salesRow[salesDateColIndex] ? formatDate(salesRow[salesDateColIndex]) : "";
-          // Column E (index 4) - Amount
-          const salesAmount = salesRow[salesAmountColIndex] !== undefined ? parseFloat(salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "")) : null;
-          // Column G (index 6) - Count
-          const salesCount = salesRow[6] !== undefined ? parseInt(salesRow[6].toString()) : null;
-          
-          // Check if all criteria match exactly as per the VBA formula
-          if (cardBrand === salesCardType && 
-              date === salesDate && 
-              Math.abs((krValue || 0) - (salesAmount || 0)) < 0.01 &&
-              count === salesCount) {
-            finalCount++;
-          }
-        }
-        
-        return [...row, finalCount];
-      }
-      return row;
-    });
-    
-    // Filter records where Final Count = 0 (Column AC)
-    // This matches the VBA: "Columns("AC:AC").AutoFilter Field:=29, Criteria1:="0""
-    const finalCountColIndex = paymentsHubWithFinalCount[0].length - 1;
-    const filteredRows = [];
-    
-    // Always include the header row
-    filteredRows.push(paymentsHubWithFinalCount[0]);
-    
-    // Only include rows where Final Count is ZERO
-    for (let i = 1; i < paymentsHubWithFinalCount.length; i++) {
-      const row = paymentsHubWithFinalCount[i];
-      if (row.length > finalCountColIndex) {
-        const finalCountValue = parseInt(row[finalCountColIndex]) || 0;
-        if (finalCountValue === 0) {
-          filteredRows.push(row);
+    for (let i = 1; i < paymentsHubWithCount.length; i++) {
+      const row = paymentsHubWithCount[i];
+      if (row.length > countColIndex) {
+        const countValue = parseInt(row[countColIndex]) || 0;
+        if (countValue === 0) {
+          finalRows.push(row);
         }
       }
     }
 
-    // Sort by Card Brand descending (replicating the VBA sort)
-    // VBA: "Sort.SortFields.Add Key:=Range("E:E"), SortOn:=xlSortOnValues, Order:=xlDescending"
-    filteredRows.sort((a, b) => {
+    // Sort by Total Transaction Amount descending (similar to VBA sort)
+    finalRows.sort((a, b) => {
       // Keep header row at the top
-      if (a === filteredRows[0]) return -1;
-      if (b === filteredRows[0]) return 1;
+      if (a === finalRows[0]) return -1;
+      if (b === finalRows[0]) return 1;
       
-      // Sort by Card Brand descending
-      const brandA = a[cardBrandColIndex] ? a[cardBrandColIndex].toString().toLowerCase() : "";
-      const brandB = b[cardBrandColIndex] ? b[cardBrandColIndex].toString().toLowerCase() : "";
+      // Parse amounts for sorting
+      let amountA = 0;
+      if (a[totalAmountColIndex]) {
+        const amountStrA = a[totalAmountColIndex].toString().replace(/[^\d.-]/g, "");
+        amountA = parseFloat(amountStrA) || 0;
+      }
       
-      return brandB.localeCompare(brandA);
+      let amountB = 0;
+      if (b[totalAmountColIndex]) {
+        const amountStrB = b[totalAmountColIndex].toString().replace(/[^\d.-]/g, "");
+        amountB = parseFloat(amountStrB) || 0;
+      }
+      
+      return amountB - amountA; // Descending order
     });
 
-    // Select visible columns for the report
-    const finalData = filteredRows.map((row, index) => {
+    // Create the final output data with selected columns
+    const finalData = finalRows.map((row, index) => {
       if (index === 0) {
-        // Explicitly set all headers
+        // Use the exact header names from the VBA code
         return [
           "Date",
           "Customer Name",
           "Total Transaction Amount",
           "Cash Discounting Amount",
           "Card Brand",
-          "Total (-) Fee"
+          "Total (-) Fee" // This is the K-R column
         ];
       } else {
-        // Simplify date format to match the Final tab (MM/DD/YY 0:00)
-        let dateValue = row[dateColIndex] || "";
-        if (dateValue) {
-          // Extract just the date part (mm/dd/yy)
-          const dateRegex = /(\d{1,2})\/(\d{1,2})\/(\d{2})/;
-          const match = dateValue.toString().match(dateRegex);
-          if (match) {
-            dateValue = `${match[1]}/${match[2]}/${match[3]} 0:00`;
-          }
-        }
-        
-        // Format currency and include the Total (-) Fee column (K-R)
+        // Format values for display
         return [
-          dateValue,
+          formatDateForDisplay(row[dateColIndex]),
           row[customerNameColIndex] || "",
           formatCurrencyString(row[totalAmountColIndex]),
           formatCurrencyString(row[discountingAmountColIndex]),
           row[cardBrandColIndex] || "",
-          formatCurrencyString(row[krColIndex]) // K-R value as "Total (-) Fee"
+          formatCurrencyString(row[krColIndex])
         ];
       }
     });
 
-    // Calculate card brand totals from both data sources
-    const paymentsHubTotals = calculateCardTotalsFromPaymentsHub(paymentsHubWithCount, cardBrandColIndex, krColIndex);
-    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesNameColIndex, salesAmountColIndex);
-
+    // Calculate card brand totals for the summary section
+    // First for Payments Hub data
+    const paymentsHubTotals = {
+      visa: 0,
+      mastercard: 0,
+      "american express": 0
+    };
+    
+    for (let i = 1; i < paymentsHubWithCount.length; i++) {
+      const row = paymentsHubWithCount[i];
+      if (row.length > Math.max(cardBrandColIndex, krColIndex)) {
+        const cardBrand = normalize(row[cardBrandColIndex]);
+        const amount = parseFloat(row[krColIndex]) || 0;
+        
+        if (cardBrand === "visa") {
+          paymentsHubTotals.visa += amount;
+        } else if (cardBrand === "mastercard") {
+          paymentsHubTotals.mastercard += amount;
+        } else if (cardBrand === "american express") {
+          paymentsHubTotals["american express"] += amount;
+        }
+      }
+    }
+    
+    // Then for Sales Totals data
+    const salesTotals = {
+      visa: 0,
+      mastercard: 0,
+      "american express": 0
+    };
+    
+    for (let i = 1; i < salesTotalsData.length; i++) {
+      const row = salesTotalsData[i];
+      if (row.length > Math.max(salesNameColIndex, salesAmountColIndex)) {
+        const cardType = normalize(row[salesNameColIndex]);
+        let amount = 0;
+        
+        if (row[salesAmountColIndex]) {
+          const amountStr = row[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
+          amount = parseFloat(amountStr) || 0;
+        }
+        
+        if (cardType === "visa") {
+          salesTotals.visa += amount;
+        } else if (cardType === "mastercard") {
+          salesTotals.mastercard += amount;
+        } else if (cardType === "american express") {
+          salesTotals["american express"] += amount;
+        }
+      }
+    }
+    
     // Calculate differences
     const differences = {
-      visa: (paymentsHubTotals.visa || 0) - (salesTotals.visa || 0),
-      mastercard: (paymentsHubTotals.mastercard || 0) - (salesTotals.mastercard || 0),
-      "american express": (paymentsHubTotals["american express"] || 0) - (salesTotals["american express"] || 0),
-      discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0)
+      visa: paymentsHubTotals.visa - salesTotals.visa,
+      mastercard: paymentsHubTotals.mastercard - salesTotals.mastercard,
+      "american express": paymentsHubTotals["american express"] - salesTotals["american express"]
     };
 
-    // Create reconciliation summary with rounded values to match the Excel file
+    // Create summary section data - matches the VBA section that creates I1:O4
     const summaryData = [
-      ["Hub Report", "Total", "", "Sales Report", "Total", "", "Difference"],
+      ["Hub Report", "Total", "", "Hub Report", "Total", "", "Difference"],
       [
         "Visa", 
-        Math.round(paymentsHubTotals.visa || 0).toString(), 
+        formatCurrencyString(paymentsHubTotals.visa), 
         "", 
         "Visa", 
-        Math.round(salesTotals.visa || 0).toString(), 
+        formatCurrencyString(salesTotals.visa), 
         "", 
-        Math.round(differences.visa || 0).toString()
+        formatCurrencyString(differences.visa)
       ],
       [
         "Mastercard", 
-        Math.round(paymentsHubTotals.mastercard || 0).toString(), 
+        formatCurrencyString(paymentsHubTotals.mastercard), 
         "", 
         "Mastercard", 
-        Math.round(salesTotals.mastercard || 0).toString(), 
+        formatCurrencyString(salesTotals.mastercard), 
         "", 
-        Math.round(differences.mastercard || 0).toString()
+        formatCurrencyString(differences.mastercard)
       ],
       [
         "American Express", 
-        Math.round(paymentsHubTotals["american express"] || 0).toString(), 
+        formatCurrencyString(paymentsHubTotals["american express"]), 
         "", 
         "American Express", 
-        Math.round(salesTotals["american express"] || 0).toString(), 
+        formatCurrencyString(salesTotals["american express"]), 
         "", 
-        Math.round(differences["american express"] || 0).toString()
-      ],
-      [
-        "Discover", 
-        Math.round(paymentsHubTotals.discover || 0).toString(), 
-        "", 
-        "Discover", 
-        Math.round(salesTotals.discover || 0).toString(), 
-        "", 
-        Math.round(differences.discover || 0).toString()
+        formatCurrencyString(differences["american express"])
       ]
     ];
 
-    // Combine finalData with summaryData into a single result dataset
-    const maxRows = Math.max(finalData.length, summaryData.length);
-    const resultData = [];
-    
-    for (let i = 0; i < maxRows; i++) {
-      const finalRow = i < finalData.length ? 
-        finalData[i] : Array(finalData[0] ? finalData[0].length : 6).fill("");
-      const summaryRow = i < summaryData.length ? 
-        summaryData[i] : Array(summaryData[0] ? summaryData[0].length : 7).fill("");
-
-      resultData.push([...finalRow, "", ...summaryRow]);
-    }
-
-    return resultData;
+    // Return both the detailed transaction data and the summary data
+    return {
+      finalData: finalData,
+      summaryData: summaryData
+    };
 
   } catch (error) {
     console.error("Error processing data:", error);
-    return [
-      ["Error processing data: " + error.message]
-    ];
+    return {
+      error: "Error processing data: " + error.message
+    };
   }
 }
 
@@ -356,176 +323,87 @@ function findColumnIndex(headerRow, columnName) {
 }
 
 /**
- * Helper function to normalize text values
+ * Helper function to normalize text values for comparison
  */
 function normalize(value) {
-  return value ? value.toString().toLowerCase().trim() : "";
-}
-
-/**
- * Helper function to calculate card totals from Payments Hub data
- */
-function calculateCardTotalsFromPaymentsHub(data, cardBrandColIndex, krColIndex) {
-  const totals = {
-    visa: 0,
-    mastercard: 0,
-    "american express": 0,
-    discover: 0
-  };
-  
-  if (cardBrandColIndex === -1 || krColIndex === -1) {
-    return totals;
-  }
-  
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    if (row && row.length > Math.max(cardBrandColIndex, krColIndex)) {
-      if (row[cardBrandColIndex]) {
-        const cardBrand = row[cardBrandColIndex].toString().toLowerCase().trim();
-        const amount = parseFloat(row[krColIndex]) || 0;
-        
-        if (!isNaN(amount)) {
-          // Add amounts to the appropriate card brand
-          if (cardBrand === "visa") {
-            totals.visa += amount;
-          } else if (cardBrand === "mastercard") {
-            totals.mastercard += amount;
-          } else if (cardBrand === "american express") {
-            totals["american express"] += amount;
-          } else if (cardBrand === "discover") {
-            totals.discover += amount;
-          }
-        }
-      }
-    }
-  }
-  
-  return totals;
-}
-
-/**
- * Helper function to calculate card totals from Sales Totals data
- */
-function calculateCardTotalsFromSales(data, cardTypeIndex, amountIndex) {
-  const totals = {
-    visa: 0,
-    mastercard: 0,
-    "american express": 0,
-    discover: 0
-  };
-  
-  if (cardTypeIndex === -1 || amountIndex === -1) {
-    return totals;
-  }
-  
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    if (row && row.length > Math.max(cardTypeIndex, amountIndex)) {
-      if (row[cardTypeIndex]) {
-        const cardType = row[cardTypeIndex].toString().toLowerCase().trim();
-        
-        // Parse the amount, removing currency symbols and spaces
-        let amount = 0;
-        if (row[amountIndex]) {
-          const amountStr = row[amountIndex].toString().replace(/[^\d.-]/g, "");
-          amount = parseFloat(amountStr) || 0;
-        }
-        
-        if (!isNaN(amount)) {
-          // Add amounts to the appropriate card type
-          if (cardType === "visa") {
-            totals.visa += amount;
-          } else if (cardType === "mastercard") {
-            totals.mastercard += amount;
-          } else if (cardType === "american express") {
-            totals["american express"] += amount;
-          } else if (cardType === "discover") {
-            totals.discover += amount;
-          }
-        }
-      }
-    }
-  }
-  
-  return totals;
+  if (!value) return "";
+  return value.toString().toLowerCase().trim();
 }
 
 /**
  * Helper function to format date values for comparison
+ * Converts various date formats to a standard MM/DD/YY format
  */
 function formatDate(dateStr) {
   if (!dateStr) return "";
   
-  // Try to extract date components from various formats
-  let cleanDateStr = dateStr.toString().trim();
+  let date;
+  const dateString = dateStr.toString().trim();
   
-  // Handle mm/dd/yyyy format
-  const dateRegex1 = /(\d{1,2})\/(\d{1,2})\/(\d{4})/;
-  const dateRegex2 = /(\d{1,2})\/(\d{1,2})\/(\d{2})/;
-  // Handle yyyy-mm-dd format
-  const dateRegex3 = /(\d{4})-(\d{1,2})-(\d{1,2})/;
-  // Handle timestamp format like "3/13/25 19:58"
-  const timestampRegex = /(\d{1,2})\/(\d{1,2})\/(\d{2})\s+\d{1,2}:\d{1,2}/;
-  
-  let month, day, year;
-  
-  if (timestampRegex.test(cleanDateStr)) {
-    const match = cleanDateStr.match(timestampRegex);
-    month = match[1].padStart(2, "0");
-    day = match[2].padStart(2, "0");
-    year = match[3].length === 2 ? (match[3] < "50" ? "20" + match[3] : "19" + match[3]) : match[3];
-  } else if (dateRegex1.test(cleanDateStr)) {
-    const match = cleanDateStr.match(dateRegex1);
-    month = match[1].padStart(2, "0");
-    day = match[2].padStart(2, "0");
-    year = match[3];
-  } else if (dateRegex2.test(cleanDateStr)) {
-    const match = cleanDateStr.match(dateRegex2);
-    month = match[1].padStart(2, "0");
-    day = match[2].padStart(2, "0");
-    year = match[3].length === 2 ? (match[3] < "50" ? "20" + match[3] : "19" + match[3]) : match[3];
-  } else if (dateRegex3.test(cleanDateStr)) {
-    const match = cleanDateStr.match(dateRegex3);
-    year = match[1];
-    month = match[2].padStart(2, "0");
-    day = match[3].padStart(2, "0");
-  } else {
-    // Try to use JavaScript's Date parsing as a fallback
-    try {
-      const date = new Date(cleanDateStr);
-      if (!isNaN(date.getTime())) {
-        month = (date.getMonth() + 1).toString().padStart(2, "0");
-        day = date.getDate().toString().padStart(2, "0");
-        year = date.getFullYear().toString();
-      } else {
-        return cleanDateStr; // Return original if parsing fails
+  // Try to parse the date using various formats
+  if (dateString.includes('/')) {
+    // Handle format like MM/DD/YYYY or MM/DD/YY
+    const parts = dateString.split('/');
+    if (parts.length >= 3) {
+      const month = parts[0].padStart(2, '0');
+      const day = parts[1].padStart(2, '0');
+      let year = parts[2];
+      if (year.length > 2) {
+        year = year.substring(year.length - 2);
       }
-    } catch (e) {
-      return cleanDateStr; // Return original if parsing fails
+      return `${month}/${day}/${year}`;
     }
   }
   
-  // Return normalized format for comparison: MM/DD/YYYY
-  // But keep only last 2 digits of year for internal comparisons
-  const shortYear = year.length === 4 ? year.substring(2) : year;
-  return `${month}/${day}/${shortYear}`;
+  // Fallback to Date object parsing
+  try {
+    date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      // Get last 2 digits of year
+      const year = String(date.getFullYear()).slice(-2);
+      return `${month}/${day}/${year}`;
+    }
+  } catch (e) {
+    console.error("Error parsing date:", e);
+  }
+  
+  return dateString; // Return original if parsing fails
 }
 
 /**
- * Helper function to format currency string values
- * Preserves original currency format with $ sign for display
+ * Format date for display in the final output
+ * Adds "0:00" time component to match the VBA output format
+ */
+function formatDateForDisplay(dateStr) {
+  if (!dateStr) return "";
+  
+  const formattedDate = formatDate(dateStr);
+  // Add the time component (0:00) if it's not already there
+  if (!formattedDate.includes(':')) {
+    return `${formattedDate} 0:00`;
+  }
+  return formattedDate;
+}
+
+/**
+ * Helper function to format currency values with $ sign and proper decimal places
  */
 function formatCurrencyString(value) {
-  if (!value) return "";
+  if (value === undefined || value === null || value === "") return "";
   
-  // Extract the numeric part from currency string
-  const numStr = value.toString().replace(/[^\d.-]/g, "");
-  const numValue = parseFloat(numStr);
-  
-  if (isNaN(numValue)) {
-    return "";
+  let numValue;
+  if (typeof value === 'string') {
+    // Remove any non-numeric characters except decimal point and negative sign
+    const numStr = value.replace(/[^\d.-]/g, "");
+    numValue = parseFloat(numStr);
+  } else {
+    numValue = parseFloat(value);
   }
   
-  // Return with dollar sign to match the expected format
-  return "$" + numValue.toFixed(2) + " ";
+  if (isNaN(numValue)) return "";
+  
+  // Format with 2 decimal places and $ sign
+  return `$${numValue.toFixed(2)}`;
 }
