@@ -390,8 +390,26 @@ function compareAndDisplayData(XLSX, file1, file2) {
         // Check if Final Count is 0
         const finalCount = parseInt(row[7] || 0);
         if (finalCount === 0) {
-            // Add only the first 6 columns (the last one being "Total (-) Fee")
-            filteredResults.push(row.slice(0, 6));
+            // Take just the first 6 columns
+            const displayRow = row.slice(0, 6);
+            
+            // Convert numeric columns from strings to numbers for Excel formatting
+            // Total Transaction Amount (index 2)
+            if (displayRow[2] && !isNaN(parseFloat(displayRow[2]))) {
+                displayRow[2] = parseFloat(displayRow[2]);
+            }
+            
+            // Cash Discounting Amount (index 3)
+            if (displayRow[3] && !isNaN(parseFloat(displayRow[3]))) {
+                displayRow[3] = parseFloat(displayRow[3]);
+            }
+            
+            // Total (-) Fee (index 5)
+            if (displayRow[5] && !isNaN(parseFloat(displayRow[5]))) {
+                displayRow[5] = parseFloat(displayRow[5]);
+            }
+            
+            filteredResults.push(displayRow);
         }
     }
     
