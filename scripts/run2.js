@@ -98,31 +98,32 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     // Add Count column based on the COUNTIFS formula from the VBA:
     // "=COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!C1,'Payments Hub Transaction'!RC24,'Sales Totals'!C5,'Payments Hub Transaction'!RC27)"
     const krColIndex = paymentsHubWithKR[0].length - 1;
+    
     const paymentsHubWithCount = paymentsHubWithKR.map((row, index) => {
       if (index === 0) {
         // Add header for Count
         return [...row, "Count"];
       } else if (row.length > 0) {
-        // Calculate count based on matching date, card brand, and value in K-R field
+        // Calculate count based on matching records
         let count = 0;
         
-        // Format the date and card brand for comparison
+        // Get values from Payments Hub
         const hubDate = formatDate(row[dateColIndex]);
         const hubCardBrand = normalize(row[cardBrandColIndex]);
         const hubKR = parseFloat(row[krColIndex]) || 0;
         
-        // Count matching sales entries
+        // Check Sales Totals for matches
         for (let i = 1; i < salesTotalsData.length; i++) {
           const salesRow = salesTotalsData[i];
-          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) continue;
+          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountIndex)) continue;
           
-          const salesDate = formatDate(salesRow[salesDateColIndex]);
           const salesCardType = normalize(salesRow[salesNameColIndex]);
+          const salesDate = formatDate(salesRow[salesDateColIndex]);
           
           // Parse the amount
           let salesAmount = 0;
-          if (salesRow[salesAmountColIndex]) {
-            const amountStr = salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
+          if (salesRow[salesAmountIndex]) {
+            const amountStr = salesRow[salesAmountIndex].toString().replace(/[^\d.-]/g, "");
             salesAmount = parseFloat(amountStr) || 0;
           }
           
@@ -141,20 +142,17 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Add the Final Count column (AC) based on a different COUNTIFS formula
-    // "=COUNTIFS('Sales Totals'!$A:$A,'Payments Hub Transaction'!$X2,'Sales Totals'!$B:$B,'Payments Hub Transaction'!$AH2,'Sales Totals'!$E:$E,'Payments Hub Transaction'!$AA2,'Sales Totals'!$G:$G,'Payments Hub Transaction'!$AB2)"
-    // This compares:
-    // - Card Brand (Column X) with Sales Totals Name (Column A)
-    // - Date (Column AH) with Sales Totals Date Closed (Column B)
-    // - K-R amount (Column AA) with Sales Totals Amount (Column E)
-    // - Count (Column AB) with Sales Totals Count (Column G)
+    // The Count column index (AB) is at position length-1 in the current data array
+    const countColIndex = paymentsHubWithCount[0].length - 1;
     
+    // Add Final Count column based on the actual formula from the Excel file:
+    // "=COUNTIFS('Sales Totals'!$A:$A,'Payments Hub Transaction'!$X2,'Sales Totals'!$B:$B,'Payments Hub Transaction'!$AH2,'Sales Totals'!$E:$E,'Payments Hub Transaction'!$AA2,'Sales Totals'!$G:$G,'Payments Hub Transaction'!$AB2)"
     const paymentsHubWithFinalCount = paymentsHubWithCount.map((row, index) => {
       if (index === 0) {
         // Add header for Final Count
         return [...row, "Final Count"];
       } else if (row.length > 0) {
-        // Calculate Final Count
+        // Calculate Final Count based on various criteria
         let finalCount = 0;
         
         // Get values from Payments Hub
@@ -186,7 +184,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       }
       return row;
     });
-    
+
     // Filter records where Final Count = 0 (Column AC)
     const finalCountColIndex = paymentsHubWithFinalCount[0].length - 1;
     const filteredRows = [];
@@ -257,7 +255,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
 
     // Calculate card brand totals from both data sources
     const paymentsHubTotals = calculateCardTotalsFromPaymentsHub(paymentsHubWithCount, cardBrandColIndex, krColIndex);
-    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesNameColIndex, salesAmountColIndex);
+    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesNameColIndex, salesAmountIndex);
 
     // Calculate differences
     const differences = {
