@@ -1,5 +1,5 @@
 /**
- * Excel Reconciliation Script - JavaScript implementation for comparing payment data
+ * Fixed Excel Reconciliation Script - JavaScript implementation for comparing payment data
  * This function compares and reconciles data from two Excel files/sheets:
  * 1. Payments Hub Transaction
  * 2. Sales Totals
@@ -23,22 +23,66 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       sheetStubs: true
     });
 
-    // Get sheets from the workbooks
-    const paymentsHubSheet = workbook1.Sheets[workbook1.SheetNames[0]];
-    const salesTotalsSheet = workbook2.Sheets[workbook2.SheetNames[0]];
+    // Get sheets from the workbooks - we'll look for the sheets by name
+    let paymentsHubSheet, salesTotalsSheet;
+    
+    // Try to find the exact sheet names as used in the VBA
+    paymentsHubSheet = workbook1.Sheets["Payments Hub Transaction"] || null;
+    salesTotalsSheet = workbook2.Sheets["Sales Totals"] || null;
+    
+    // If not found, try alternative names or first sheet as fallback
+    if (!paymentsHubSheet) {
+      // Look for sheets with similar names first
+      const hubSheetName = findSheetWithSimilarName(workbook1.SheetNames, "Payments Hub");
+      if (hubSheetName) {
+        paymentsHubSheet = workbook1.Sheets[hubSheetName];
+        console.log("Found Payments Hub sheet by similar name:", hubSheetName);
+      } else {
+        // Last resort: use the first sheet
+        paymentsHubSheet = workbook1.Sheets[workbook1.SheetNames[0]];
+        console.log("Using first sheet for Payments Hub:", workbook1.SheetNames[0]);
+      }
+    }
+    
+    if (!salesTotalsSheet) {
+      const salesSheetName = findSheetWithSimilarName(workbook2.SheetNames, "Sales");
+      if (salesSheetName) {
+        salesTotalsSheet = workbook2.Sheets[salesSheetName];
+        console.log("Found Sales Totals sheet by similar name:", salesSheetName);
+      } else {
+        // Last resort: use the first sheet
+        salesTotalsSheet = workbook2.Sheets[workbook2.SheetNames[0]];
+        console.log("Using first sheet for Sales Totals:", workbook2.SheetNames[0]);
+      }
+    }
+    
+    // Check if we have both sheets
+    if (!paymentsHubSheet || !salesTotalsSheet) {
+      throw new Error("Could not find required sheets in the Excel files");
+    }
 
-    // Convert sheets to JSON for easier processing
+    // Convert sheets to JSON for easier processing - ensure we read dates as strings
     const paymentsHubData = XLSX.utils.sheet_to_json(paymentsHubSheet, {
       header: 1,
       defval: "",
-      raw: false
+      raw: false,
+      dateNF: "MM/DD/YY"  // Match VBA date format
     });
     
     const salesTotalsData = XLSX.utils.sheet_to_json(salesTotalsSheet, {
       header: 1,
       defval: "",
-      raw: false
+      raw: false,
+      dateNF: "MM/DD/YY"  // Match VBA date format
     });
+
+    // Debug info
+    console.log("Payments Hub data rows:", paymentsHubData.length);
+    console.log("Sales Totals data rows:", salesTotalsData.length);
+
+    // Show sample of first few rows to debug column structure
+    console.log("Payments Hub sample headers:", paymentsHubData[0]?.slice(0, 10));
+    console.log("Sales Totals sample headers:", salesTotalsData[0]?.slice(0, 10));
 
     // Clean and normalize headers
     const cleanHeaders = (headers) => {
@@ -55,17 +99,32 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       salesTotalsData[0] = cleanHeaders(salesTotalsData[0]);
     }
 
-    // Find column indices in Payments Hub data
-    const dateColIndex = findColumnIndex(paymentsHubData[0], "Date");
-    const customerNameColIndex = findColumnIndex(paymentsHubData[0], "Customer Name");
-    const totalAmountColIndex = findColumnIndex(paymentsHubData[0], "Total Transaction Amount");
-    const discountingAmountColIndex = findColumnIndex(paymentsHubData[0], "Cash Discounting Amount");
-    const cardBrandColIndex = findColumnIndex(paymentsHubData[0], "Card Brand");
+    // Find column indices in Payments Hub data - more robust column finding
+    const dateColIndex = findColumnIndexFuzzy(paymentsHubData[0], ["Date", "Transaction Date"]);
+    const customerNameColIndex = findColumnIndexFuzzy(paymentsHubData[0], ["Customer Name", "Customer", "Client Name"]);
+    const totalAmountColIndex = findColumnIndexFuzzy(paymentsHubData[0], ["Total Transaction Amount", "Total Amount", "Transaction Amount"]);
+    const discountingAmountColIndex = findColumnIndexFuzzy(paymentsHubData[0], ["Cash Discounting Amount", "Discount Amount", "Discounting"]);
+    const cardBrandColIndex = findColumnIndexFuzzy(paymentsHubData[0], ["Card Brand", "Brand", "Card Type"]);
 
-    // Find column indices in Sales Totals data
-    const salesNameColIndex = findColumnIndex(salesTotalsData[0], "Name");
-    const salesDateColIndex = findColumnIndex(salesTotalsData[0], "Date Closed");
-    const salesAmountColIndex = findColumnIndex(salesTotalsData[0], "Amount");
+    // Find column indices in Sales Totals data - more robust column finding
+    const salesNameColIndex = findColumnIndexFuzzy(salesTotalsData[0], ["Name", "Card Type", "Card Brand"]);
+    const salesDateColIndex = findColumnIndexFuzzy(salesTotalsData[0], ["Date Closed", "Date", "Transaction Date"]);
+    const salesAmountColIndex = findColumnIndexFuzzy(salesTotalsData[0], ["Amount", "Total", "Sale Amount"]);
+
+    // Debug column indices
+    console.log("Payments Hub column indices:", {
+      date: dateColIndex,
+      customer: customerNameColIndex,
+      totalAmount: totalAmountColIndex,
+      discountAmount: discountingAmountColIndex,
+      cardBrand: cardBrandColIndex
+    });
+    
+    console.log("Sales Totals column indices:", {
+      name: salesNameColIndex,
+      date: salesDateColIndex,
+      amount: salesAmountColIndex
+    });
 
     // Calculate K-R (Total Transaction Amount - Cash Discounting Amount)
     const paymentsHubWithKR = paymentsHubData.map((row, index) => {
@@ -95,7 +154,30 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     // Get the K-R column index
     const krColIndex = paymentsHubWithKR[0].length - 1;
 
-    // Add Count column based on the COUNTIFS formula from the VBA
+    // Sample some data for debugging format issues
+    const samplePaymentsHubRows = paymentsHubWithKR.slice(1, 4).map(row => ({
+      date: row[dateColIndex],
+      formattedDate: formatDate(row[dateColIndex]),
+      cardBrand: row[cardBrandColIndex],
+      normalizedCardBrand: normalize(row[cardBrandColIndex]),
+      totalAmount: row[totalAmountColIndex],
+      discountAmount: row[discountingAmountColIndex],
+      krValue: row[krColIndex]
+    }));
+    
+    const sampleSalesTotalsRows = salesTotalsData.slice(1, 4).map(row => ({
+      date: row[salesDateColIndex],
+      formattedDate: formatDate(row[salesDateColIndex]),
+      cardType: row[salesNameColIndex],
+      normalizedCardType: normalize(row[salesNameColIndex]),
+      amount: row[salesAmountColIndex]
+    }));
+    
+    console.log("Sample Payments Hub rows:", samplePaymentsHubRows);
+    console.log("Sample Sales Totals rows:", sampleSalesTotalsRows);
+
+    // Add Count column based on the COUNTIFS formula from the VBA with improved matching
+    // This is replicating: "=COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!C1,'Payments Hub Transaction'!RC24,'Sales Totals'!C5,'Payments Hub Transaction'!RC27)"
     const paymentsHubWithCount = paymentsHubWithKR.map((row, index) => {
       if (index === 0) {
         // Add header for Count
@@ -124,10 +206,20 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
             salesAmount = parseFloat(amountStr) || 0;
           }
           
-          // Match on date, card type and amount (with small tolerance for floating point differences)
-          if (hubDate === salesDate && 
-              hubCardBrand === salesCardType && 
-              Math.abs(hubKR - salesAmount) < 0.01) {
+          // Improve matching logic to match exactly what the COUNTIFS is doing:
+          // The VBA formula is counting where:
+          // 1. Sales Totals date matches Payments Hub date
+          // 2. Sales Totals card type matches Payments Hub card brand
+          // 3. Sales Totals amount matches Payments Hub K-R amount
+          
+          const dateMatches = compareDates(hubDate, salesDate);
+          const cardMatches = compareCardBrands(hubCardBrand, salesCardType);
+          
+          // Use a more generous tolerance for floating point comparison (0.02 = 2 cents)
+          // This helps with rounding differences between Excel and JavaScript
+          const amountMatches = Math.abs(hubKR - salesAmount) < 0.02;
+          
+          if (dateMatches && cardMatches && amountMatches) {
             count++;
           }
         }
@@ -140,90 +232,15 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     // Get the Count column index
     const countColIndex = paymentsHubWithCount[0].length - 1;
 
-    // Add Final Count column
-    const paymentsHubWithFinalCount = paymentsHubWithCount.map((row, index) => {
-      if (index === 0) {
-        // Add header for Final Count
-        return [...row, "Final Count"];
-      } else if (row.length > 0) {
-        // Get values needed for comparison
-        const hubDate = formatDate(row[dateColIndex]);
-        const hubCardBrand = normalize(row[cardBrandColIndex]);
-        const hubKR = row[krColIndex] !== undefined ? parseFloat(row[krColIndex]) : 0;
-        const hubCount = row[countColIndex] !== undefined ? parseInt(row[countColIndex]) : 0;
-        
-        // Count exact matches in Sales Totals
-        let finalCount = 0;
-        
-        for (let i = 1; i < salesTotalsData.length; i++) {
-          const salesRow = salesTotalsData[i];
-          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) {
-            continue;
-          }
-          
-          const salesCardType = normalize(salesRow[salesNameColIndex]);
-          const salesDate = formatDate(salesRow[salesDateColIndex]);
-          let salesAmount = 0;
-          
-          if (salesRow[salesAmountColIndex]) {
-            const amountStr = salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
-            salesAmount = parseFloat(amountStr) || 0;
-          }
-          
-          // Match on exact date, card type, amount, and any other criteria
-          if (hubDate === salesDate && 
-              hubCardBrand === salesCardType && 
-              Math.abs(hubKR - salesAmount) < 0.01) {
-            finalCount++;
-          }
-        }
-        
-        return [...row, finalCount];
-      }
-      return row;
-    });
-
-    // Get the Final Count column index
-    const finalCountColIndex = paymentsHubWithFinalCount[0].length - 1;
-    
-    // Filter rows where Final Count = 0
-    const filteredRows = [paymentsHubWithFinalCount[0]]; // Always include header row
-    
-    for (let i = 1; i < paymentsHubWithFinalCount.length; i++) {
-      const row = paymentsHubWithFinalCount[i];
-      if (row.length > finalCountColIndex) {
-        // Check if Final Count is 0
-        const finalCountValue = parseInt(row[finalCountColIndex]) || 0;
-        if (finalCountValue === 0) {
-          filteredRows.push(row);
-        }
-      }
-    }
-
-    // Sort by Total Transaction Amount descending
-    filteredRows.sort((a, b) => {
-      // Keep header row at the top
-      if (a === filteredRows[0]) return -1;
-      if (b === filteredRows[0]) return 1;
-      
-      // Parse amounts for sorting
-      let amountA = 0;
-      if (a[totalAmountColIndex]) {
-        const amountStrA = a[totalAmountColIndex].toString().replace(/[^\d.-]/g, "");
-        amountA = parseFloat(amountStrA) || 0;
-      }
-      
-      let amountB = 0;
-      if (b[totalAmountColIndex]) {
-        const amountStrB = b[totalAmountColIndex].toString().replace(/[^\d.-]/g, "");
-        amountB = parseFloat(amountStrB) || 0;
-      }
-      
-      return amountB - amountA; // Descending order
-    });
-
     // Create the final output data with selected columns
-    const finalData = filteredRows.map((row, index) => {
+    const finalData = paymentsHubWithCount.filter((row, index) => {
+      // Include header row
+      if (index === 0) return true;
+      
+      // Filter rows where Count = 0 (matches VBA behavior)
+      const count = parseInt(row[countColIndex]) || 0;
+      return count === 0;
+    }).map((row, index) => {
       if (index === 0) {
         // Use the exact header names from the VBA code
         return [
@@ -249,61 +266,10 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
 
     // Calculate card brand totals for the summary section
     // First for Payments Hub data
-    const paymentsHubTotals = {
-      visa: 0,
-      mastercard: 0,
-      "american express": 0,
-      discover: 0
-    };
-    
-    for (let i = 1; i < paymentsHubWithCount.length; i++) {
-      const row = paymentsHubWithCount[i];
-      if (row.length > Math.max(cardBrandColIndex, krColIndex)) {
-        const cardBrand = normalize(row[cardBrandColIndex]);
-        const amount = parseFloat(row[krColIndex]) || 0;
-        
-        if (cardBrand === "visa") {
-          paymentsHubTotals.visa += amount;
-        } else if (cardBrand === "mastercard") {
-          paymentsHubTotals.mastercard += amount;
-        } else if (cardBrand === "american express") {
-          paymentsHubTotals["american express"] += amount;
-        } else if (cardBrand === "discover") {
-          paymentsHubTotals.discover += amount;
-        }
-      }
-    }
+    const paymentsHubTotals = calculateTotalsByCardBrand(paymentsHubWithCount, cardBrandColIndex, krColIndex);
     
     // Then for Sales Totals data
-    const salesTotals = {
-      visa: 0,
-      mastercard: 0,
-      "american express": 0,
-      discover: 0
-    };
-    
-    for (let i = 1; i < salesTotalsData.length; i++) {
-      const row = salesTotalsData[i];
-      if (row.length > Math.max(salesNameColIndex, salesAmountColIndex)) {
-        const cardType = normalize(row[salesNameColIndex]);
-        let amount = 0;
-        
-        if (row[salesAmountColIndex]) {
-          const amountStr = row[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
-          amount = parseFloat(amountStr) || 0;
-        }
-        
-        if (cardType === "visa") {
-          salesTotals.visa += amount;
-        } else if (cardType === "mastercard") {
-          salesTotals.mastercard += amount;
-        } else if (cardType === "american express") {
-          salesTotals["american express"] += amount;
-        } else if (cardType === "discover") {
-          salesTotals.discover += amount;
-        }
-      }
-    }
+    const salesTotals = calculateTotalsByCardBrand(salesTotalsData, salesNameColIndex, salesAmountColIndex);
     
     // Calculate differences
     const differences = {
@@ -394,85 +360,185 @@ function findColumnIndex(headerRow, columnName) {
 }
 
 /**
- * Helper function to normalize text values for comparison
+ * More forgiving column finder that tries multiple potential column names
  */
-function normalize(value) {
-  if (!value) return "";
-  return value.toString().toLowerCase().trim();
+function findColumnIndexFuzzy(headerRow, possibleNames) {
+  if (!headerRow) return -1;
+  
+  // First try exact matches
+  for (const name of possibleNames) {
+    const exactIndex = headerRow.findIndex(header =>
+      header && header.toString().toLowerCase().trim() === name.toLowerCase().trim()
+    );
+    if (exactIndex !== -1) return exactIndex;
+  }
+  
+  // Then try contains matches
+  for (const name of possibleNames) {
+    const partialIndex = headerRow.findIndex(header =>
+      header && header.toString().toLowerCase().trim().includes(name.toLowerCase().trim())
+    );
+    if (partialIndex !== -1) return partialIndex;
+  }
+  
+  // Try even more fuzzy matches with common variations
+  for (const name of possibleNames) {
+    const fuzzyIndex = headerRow.findIndex(header => {
+      if (!header) return false;
+      const headerStr = header.toString().toLowerCase().trim();
+      const nameStr = name.toLowerCase().trim();
+      
+      // Try removing spaces, underscores, etc.
+      const cleanHeader = headerStr.replace(/[\s_-]/g, "");
+      const cleanName = nameStr.replace(/[\s_-]/g, "");
+      
+      return cleanHeader.includes(cleanName) || cleanName.includes(cleanHeader);
+    });
+    if (fuzzyIndex !== -1) return fuzzyIndex;
+  }
+  
+  return -1; // Not found
 }
 
 /**
- * Helper function to format date values for comparison
+ * Find a sheet with a similar name to the target
  */
-function formatDate(dateStr) {
-  if (!dateStr) return "";
+function findSheetWithSimilarName(sheetNames, targetName) {
+  const targetLower = targetName.toLowerCase();
   
-  let date;
-  const dateString = dateStr.toString().trim();
+  // First try exact match
+  const exactMatch = sheetNames.find(name => 
+    name.toLowerCase() === targetLower
+  );
+  if (exactMatch) return exactMatch;
   
-  // Try to parse the date using various formats
-  if (dateString.includes('/')) {
-    // Handle format like MM/DD/YYYY or MM/DD/YY
-    const parts = dateString.split('/');
-    if (parts.length >= 3) {
-      const month = parts[0].padStart(2, '0');
-      const day = parts[1].padStart(2, '0');
-      let year = parts[2];
-      if (year.length > 2) {
-        year = year.substring(year.length - 2);
-      }
-      return `${month}/${day}/${year}`;
+  // Then try contains match
+  const containsMatch = sheetNames.find(name => 
+    name.toLowerCase().includes(targetLower) || 
+    targetLower.includes(name.toLowerCase())
+  );
+  
+  return containsMatch || null;
+}
+
+/**
+ * Better card brand comparison that handles variations
+ */
+function compareCardBrands(brand1, brand2) {
+  if (!brand1 || !brand2) return false;
+  
+  const normBrand1 = brand1.toLowerCase().trim();
+  const normBrand2 = brand2.toLowerCase().trim();
+  
+  // Direct match
+  if (normBrand1 === normBrand2) return true;
+  
+  // Common variations
+  const visaVariations = ['visa', 'vs', 'v'];
+  const mcVariations = ['mastercard', 'master card', 'master', 'mc'];
+  const amexVariations = ['american express', 'amex', 'ax', 'american exp'];
+  const discoverVariations = ['discover', 'disc', 'dc'];
+  
+  // Check if both brands are variations of the same card type
+  const isVisa = visaVariations.includes(normBrand1) && visaVariations.includes(normBrand2);
+  const isMC = mcVariations.includes(normBrand1) && mcVariations.includes(normBrand2);
+  const isAmex = amexVariations.includes(normBrand1) && amexVariations.includes(normBrand2);
+  const isDiscover = discoverVariations.includes(normBrand1) && discoverVariations.includes(normBrand2);
+  
+  return isVisa || isMC || isAmex || isDiscover;
+}
+
+/**
+ * Compare dates with better handling of formatting variations
+ */
+function compareDates(date1, date2) {
+  if (!date1 || !date2) return false;
+  
+  // Direct string match
+  if (date1 === date2) return true;
+  
+  // Try to normalize both dates to MM/DD/YY format
+  let normalizedDate1 = date1;
+  let normalizedDate2 = date2;
+  
+  // Handle MM/DD/YYYY vs MM/DD/YY
+  if (date1.includes('/') && date2.includes('/')) {
+    const parts1 = date1.split('/');
+    const parts2 = date2.split('/');
+    
+    if (parts1.length >= 3 && parts2.length >= 3) {
+      // Convert to MM/DD/YY format
+      const month1 = parts1[0].padStart(2, '0');
+      const day1 = parts1[1].padStart(2, '0');
+      const year1 = parts1[2].length > 2 ? parts1[2].slice(-2) : parts1[2];
+      
+      const month2 = parts2[0].padStart(2, '0');
+      const day2 = parts2[1].padStart(2, '0');
+      const year2 = parts2[2].length > 2 ? parts2[2].slice(-2) : parts2[2];
+      
+      normalizedDate1 = `${month1}/${day1}/${year1}`;
+      normalizedDate2 = `${month2}/${day2}/${year2}`;
+      
+      return normalizedDate1 === normalizedDate2;
     }
   }
   
-  // Fallback to Date object parsing
+  // Try parsing as Date objects and compare
   try {
-    date = new Date(dateString);
-    if (!isNaN(date.getTime())) {
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      // Get last 2 digits of year
-      const year = String(date.getFullYear()).slice(-2);
-      return `${month}/${day}/${year}`;
+    const dateObj1 = new Date(date1);
+    const dateObj2 = new Date(date2);
+    
+    if (!isNaN(dateObj1.getTime()) && !isNaN(dateObj2.getTime())) {
+      return dateObj1.getFullYear() === dateObj2.getFullYear() &&
+             dateObj1.getMonth() === dateObj2.getMonth() &&
+             dateObj1.getDate() === dateObj2.getDate();
     }
   } catch (e) {
-    console.error("Error parsing date:", e);
+    console.error("Error comparing dates:", e);
   }
   
-  return dateString; // Return original if parsing fails
+  // Fallback
+  return false;
 }
 
 /**
- * Format date for display in the final output
+ * Calculate totals by card brand for summary
  */
-function formatDateForDisplay(dateStr) {
-  if (!dateStr) return "";
+function calculateTotalsByCardBrand(data, cardBrandColIndex, amountColIndex) {
+  const totals = {
+    visa: 0,
+    mastercard: 0,
+    "american express": 0,
+    discover: 0
+  };
   
-  const formattedDate = formatDate(dateStr);
-  // Add the time component (0:00) if it's not already there
-  if (!formattedDate.includes(':')) {
-    return `${formattedDate} 0:00`;
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row.length <= Math.max(cardBrandColIndex, amountColIndex)) {
+      continue;
+    }
+    
+    let cardBrand = normalize(row[cardBrandColIndex]);
+    let amount = 0;
+    
+    if (row[amountColIndex]) {
+      const amountStr = typeof row[amountColIndex] === 'string' 
+        ? row[amountColIndex].replace(/[^\d.-]/g, "") 
+        : row[amountColIndex];
+      amount = parseFloat(amountStr) || 0;
+    }
+    
+    // Map various card brand formats to standard names
+    if (cardBrand.includes("visa") || cardBrand === "vs" || cardBrand === "v") {
+      totals.visa += amount;
+    } else if (cardBrand.includes("master") || cardBrand === "mc") {
+      totals.mastercard += amount;
+    } else if (cardBrand.includes("american") || cardBrand.includes("amex") || cardBrand === "ax") {
+      totals["american express"] += amount;
+    } else if (cardBrand.includes("discover") || cardBrand === "disc" || cardBrand === "dc") {
+      totals.discover += amount;
+    }
   }
-  return formattedDate;
-}
-
-/**
- * Helper function to format currency values with $ sign and proper decimal places
- */
-function formatCurrencyString(value) {
-  if (value === undefined || value === null || value === "") return "";
   
-  let numValue;
-  if (typeof value === 'string') {
-    // Remove any non-numeric characters except decimal point and negative sign
-    const numStr = value.replace(/[^\d.-]/g, "");
-    numValue = parseFloat(numStr);
-  } else {
-    numValue = parseFloat(value);
-  }
-  
-  if (isNaN(numValue)) return "";
-  
-  // Format with 2 decimal places and $ sign
-  return `$${numValue.toFixed(2)} `; // Added space after the amount to match Excel format
+  return totals;
 }
