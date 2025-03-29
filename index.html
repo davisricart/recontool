@@ -181,6 +181,14 @@
         #downloadButton:hover {
             background-color: #2d9200;
         }
+        
+        #clearButton {
+            background-color: #6c757d;
+        }
+        
+        #clearButton:hover {
+            background-color: #5a6268;
+        }
     </style>
 </head>
 <body>
@@ -212,6 +220,7 @@
 
             <div>
                 <button type="button" id="compareButton">Run Code</button>
+                <button type="button" id="clearButton">Clear</button>
                 <button type="button" id="downloadButton" style="display: none;">Download Results</button>
             </div>
             <p id="status"></p>
@@ -383,6 +392,30 @@
         }
 
         document.getElementById('compareButton').addEventListener('click', compareFiles);
+        
+        // Clear button functionality
+        document.getElementById('clearButton').addEventListener('click', function() {
+            // Clear file inputs
+            document.getElementById('file1').value = '';
+            document.getElementById('file2').value = '';
+            
+            // Clear script name
+            document.getElementById('scriptName').value = '';
+            
+            // Clear status
+            const status = document.getElementById('status');
+            status.textContent = '';
+            status.style.color = 'var(--danger)';
+            
+            // Hide results
+            const previewTable = document.getElementById('previewTable');
+            const previewArea = document.getElementById('previewArea');
+            const downloadButton = document.getElementById('downloadButton');
+            
+            previewTable.innerHTML = '';
+            previewArea.style.display = 'none';
+            downloadButton.style.display = 'none';
+        });
     </script>
 </body>
 </html>
