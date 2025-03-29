@@ -297,17 +297,32 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       ]
     ];
 
-    // Return both the detailed transaction data and the summary data
-    return {
-      finalData: finalData,
-      summaryData: summaryData
-    };
+    // Combine finalData with summaryData into a single result dataset
+    // This matches the expected return format in the original code
+    const resultData = [];
+    
+    // Determine the max number of rows needed
+    const maxRows = Math.max(finalData.length, summaryData.length);
+    
+    // Combine the data horizontally with spacing in between
+    for (let i = 0; i < maxRows; i++) {
+      const finalRow = i < finalData.length ? 
+        finalData[i] : Array(finalData[0] ? finalData[0].length : 6).fill("");
+      const summaryRow = i < summaryData.length ? 
+        summaryData[i] : Array(summaryData[0] ? summaryData[0].length : 7).fill("");
+
+      resultData.push([...finalRow, "", ...summaryRow]);
+    }
+
+    // Return the combined data as a flat array
+    return resultData;
 
   } catch (error) {
     console.error("Error processing data:", error);
-    return {
-      error: "Error processing data: " + error.message
-    };
+    // Return error as a single row array to match expected format
+    return [
+      ["Error processing data: " + error.message]
+    ];
   }
 }
 
