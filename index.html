@@ -361,19 +361,21 @@
                 status.textContent = 'Comparing files...';
                 const result = await CompareFunction(XLSX, content1, content2);
 
-                result.forEach((row, rowIndex) => {
-                    const tr = document.createElement('tr');
-                    row.forEach(cell => {
-                        const td = document.createElement(rowIndex === 0 ? 'th' : 'td');
-                        td.textContent = cell || '';
-                        tr.appendChild(td);
+                if (Array.isArray(result)) {
+                    result.forEach((row, rowIndex) => {
+                        const tr = document.createElement('tr');
+                        row.forEach(cell => {
+                            const td = document.createElement(rowIndex === 0 ? 'th' : 'td');
+                            td.textContent = cell || '';
+                            tr.appendChild(td);
+                        });
+                        previewTable.appendChild(tr);
                     });
-                    previewTable.appendChild(tr);
-                });
-
-                previewArea.style.display = 'block';
-                downloadButton.style.display = 'inline-block';
-                downloadButton.onclick = () => downloadResults(result);
+    
+                    previewArea.style.display = 'block';
+                    downloadButton.style.display = 'inline-block';
+                    downloadButton.onclick = () => downloadResults(result);
+                }
 
                 status.textContent = 'Comparison complete!';
                 status.style.color = 'var(--success)';
