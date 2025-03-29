@@ -95,7 +95,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Get the K-R column index for later use
+    // Get the K-R column index
     const krColIndex = paymentsHubWithKR[0].length - 1;
 
     // Add Count column based on the COUNTIFS formula from the VBA:
@@ -141,6 +141,9 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       }
       return row;
     });
+
+    // Get the Count column index
+    const countColIndex = paymentsHubWithCount[0].length - 1;
 
     // Add Final Count column (column AC in VBA)
     // This needs to properly implement the COUNTIFS logic from the VBA code
@@ -316,10 +319,10 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     
     // Calculate differences
     const differences = {
-      visa: paymentsHubTotals.visa - salesTotals.visa,
-      mastercard: paymentsHubTotals.mastercard - salesTotals.mastercard,
-      "american express": paymentsHubTotals["american express"] - salesTotals["american express"],
-      discover: paymentsHubTotals.discover - salesTotals.discover // Added Discover
+      visa: (paymentsHubTotals.visa || 0) - (salesTotals.visa || 0),
+      mastercard: (paymentsHubTotals.mastercard || 0) - (salesTotals.mastercard || 0),
+      "american express": (paymentsHubTotals["american express"] || 0) - (salesTotals["american express"] || 0),
+      discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0) // Added Discover
     };
 
     // Create summary section data - matches the VBA section that creates I1:O4
@@ -485,6 +488,6 @@ function formatCurrencyString(value) {
   
   if (isNaN(numValue)) return "";
   
-  // Format with 2 decimal places and $ sign
-  return `$${numValue.toFixed(2)}`;
+      // Format with 2 decimal places and $ sign
+  return `${numValue.toFixed(2)} `; // Added space after the amount to match Excel format
 }
