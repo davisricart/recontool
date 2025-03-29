@@ -430,9 +430,8 @@ function compareAndDisplayData(XLSX, file1, file2) {
         filteredResults.push(["", "", "", "", "", ""]);
         filteredResults.push(["", "", "", "", "", ""]);
         
-        // Add summary for the first file ("Hub Report")
-        // Header for first file summary
-        filteredResults.push(["Hub Report", "Total", "", "", "", ""]);
+        // Create side-by-side headers for Hub Report and Sales Report
+        filteredResults.push(["Hub Report", "Total", "", "Sales Report", "Total", ""]);
         
         // Collect unique card brands and totals from first file
         const cardBrandTotals = {};
@@ -463,72 +462,10 @@ function compareAndDisplayData(XLSX, file1, file2) {
             }
         }
         
-        // Add rows for each card brand
-        const commonCardBrands = ["Visa", "Mastercard", "American Express", "Discover"];
+        // Collect unique names and totals from second file
+        const nameTotals = {};
         
-        // First add the common card brands in a specific order
-        commonCardBrands.forEach(brand => {
-            if (cardBrandTotals[brand]) {
-                filteredResults.push([
-                    brand,
-                    parseFloat(cardBrandTotals[brand].toFixed(2)),
-                    "", "", "", ""
-                ]);
-                
-                // Remove from the object so we don't process it again
-                delete cardBrandTotals[brand];
-            } else {
-                // Add row with zeros if this brand doesn't exist in the data
-                filteredResults.push([brand, 0, "", "", "", ""]);
-            }
-        });
-        
-        // Then add any other card brands that might be in the data
-        Object.keys(cardBrandTotals).sort().forEach(brand => {
-            // Skip if brand contains "cash" (case-insensitive)
-            if (brand.toLowerCase().includes("cash")) {
-                return;
-            }
-            
-            filteredResults.push([
-                brand,
-                parseFloat(cardBrandTotals[brand].toFixed(2)),
-                "", "", "", ""
-            ]);
-        });
-        
-        // Calculate and add grand total
-        let totalNetAmount = 0;
-        
-        // Calculate the sum directly from the card brand totals
-        Object.entries(cardBrandTotals).forEach(([brand, amount]) => {
-            // Skip if brand contains "cash" (case-insensitive)
-            if (!brand.toLowerCase().includes("cash")) {
-                totalNetAmount += amount;
-            }
-        });
-        
-        // Add the common brands we already processed
-        commonCardBrands.forEach(brand => {
-            if (cardBrandTotals[brand] !== undefined) {
-                totalNetAmount += cardBrandTotals[brand];
-            }
-        });
-        
-        filteredResults.push(["TOTAL", parseFloat(totalNetAmount.toFixed(2)), "", "", "", ""]);
-        
-        // Add blank row
-        filteredResults.push(["", "", "", "", "", ""]);
-        
-        // Process the second file if available
         if (file2 && file2Headers.length > 0 && nameIndex !== -1 && amountIndex !== -1) {
-            // Add summary for the second file ("Sales Report")
-            // Header for second file summary
-            filteredResults.push(["Sales Report", "Total", "", "", "", ""]);
-            
-            // Collect unique names and totals from second file
-            const nameTotals = {};
-            
             // Common names to match card brands (case-insensitive)
             const commonNames = {
                 "visa": "Visa",
@@ -570,59 +507,55 @@ function compareAndDisplayData(XLSX, file1, file2) {
                     }
                 }
             });
-            
-            // Add rows for each name in the same order as the first section
-            // First add common brands in the specific order
-            commonCardBrands.forEach(brand => {
-                if (nameTotals[brand]) {
-                    filteredResults.push([
-                        brand,
-                        parseFloat(nameTotals[brand].toFixed(2)),
-                        "", "", "", ""
-                    ]);
-                    
-                    // Remove from the object so we don't process it again
-                    delete nameTotals[brand];
-                } else {
-                    // Add row with zeros if this brand doesn't exist in the data
-                    filteredResults.push([brand, 0, "", "", "", ""]);
-                }
-            });
-            
-            // Then add any other names that might be in the data
-            Object.keys(nameTotals).sort().forEach(name => {
-                // Skip if name contains "cash" (case-insensitive)
-                if (name.toLowerCase().includes("cash")) {
-                    return;
-                }
-                
-                filteredResults.push([
-                    name,
-                    parseFloat(nameTotals[name].toFixed(2)),
-                    "", "", "", ""
-                ]);
-            });
-            
-            // Calculate and add grand total
-            let totalSalesAmount = 0;
-            
-            // Calculate the sum directly from the name totals
-            Object.entries(nameTotals).forEach(([name, amount]) => {
-                // Skip if name contains "cash" (case-insensitive)
-                if (!name.toLowerCase().includes("cash")) {
-                    totalSalesAmount += amount;
-                }
-            });
-            
-            // Add the common brands we already processed
-            commonCardBrands.forEach(brand => {
-                if (nameTotals[brand] !== undefined) {
-                    totalSalesAmount += nameTotals[brand];
-                }
-            });
-            
-            filteredResults.push(["TOTAL", parseFloat(totalSalesAmount.toFixed(2)), "", "", "", ""]);
         }
+        
+        // Add rows for each card brand side by side
+        const commonCardBrands = ["Visa", "Mastercard", "American Express", "Discover"];
+        
+        // First add the common card brands in a specific order
+        commonCardBrands.forEach(brand => {
+            const leftValue = cardBrandTotals[brand] ? 
+                parseFloat(cardBrandTotals[brand].toFixed(2)) : 0;
+                
+            const rightValue = nameTotals[brand] ? 
+                parseFloat(nameTotals[brand].toFixed(2)) : 0;
+                
+            filteredResults.push([
+                brand,
+                leftValue,
+                "",
+                brand,
+                rightValue,
+                ""
+            ]);
+            
+            // Remove from objects so we don't process them again
+            delete cardBrandTotals[brand];
+            delete nameTotals[brand];
+        });
+        
+        // Then add any other card brands that might be in the data
+        const otherBrands = new Set([
+            ...Object.keys(cardBrandTotals).filter(b => !b.toLowerCase().includes("cash")),
+            ...Object.keys(nameTotals).filter(n => !n.toLowerCase().includes("cash"))
+        ]);
+        
+        [...otherBrands].sort().forEach(brand => {
+            const leftValue = cardBrandTotals[brand] ? 
+                parseFloat(cardBrandTotals[brand].toFixed(2)) : "";
+                
+            const rightValue = nameTotals[brand] ? 
+                parseFloat(nameTotals[brand].toFixed(2)) : "";
+                
+            filteredResults.push([
+                leftValue ? brand : "",
+                leftValue,
+                "",
+                rightValue ? brand : "",
+                rightValue,
+                ""
+            ]);
+        });
     }
     
     return filteredResults;
