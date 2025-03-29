@@ -365,6 +365,8 @@ function compareAndDisplayData(XLSX, file1, file2) {
     
     // Create a filtered result with only the columns we want to display
     const displayColumns = ["Date", "Customer Name", "Total Transaction Amount", "Cash Discounting Amount", "Card Brand", "Total (-) Fee"];
+    
+    // Create two separate data structures: one for the data and one for any formatting
     const filteredResults = [displayColumns]; // New header with renamed column and without Count/Final Count
     
     // Add first file rows that have Final Count = 0, but without the Count and Final Count columns
@@ -430,8 +432,8 @@ function compareAndDisplayData(XLSX, file1, file2) {
         filteredResults.push(["", "", "", "", "", ""]);
         filteredResults.push(["", "", "", "", "", ""]);
         
-        // Create side-by-side headers for Hub Report and Sales Report
-        filteredResults.push(["Hub Report", "Total", "", "Sales Report", "Total", ""]);
+        // Create side-by-side headers for Hub Report and Sales Report, plus Difference
+        filteredResults.push(["Hub Report", "Total", "", "Sales Report", "Total", "", "Difference"]);
         
         // Collect unique card brands and totals from first file
         const cardBrandTotals = {};
@@ -520,18 +522,29 @@ function compareAndDisplayData(XLSX, file1, file2) {
             const rightValue = nameTotals[brand] ? 
                 parseFloat(nameTotals[brand].toFixed(2)) : 0;
                 
+            // Calculate difference (Hub Report - Sales Report)
+            const difference = parseFloat((leftValue - rightValue).toFixed(2));
+                
+            // Create an object that includes the value and a "styles" property for Excel
+            const differenceCell = {
+                v: difference, // The actual value
+                t: 'n',        // Type: number
+                s: {           // Style information
+                    fill: {
+                        fgColor: { rgb: difference < 0 ? "FFFF0000" : "FF00FF00" } // Red if negative, green if positive or zero
+                    }
+                }
+            };
+                
             filteredResults.push([
                 brand,
                 leftValue,
                 "",
                 brand,
                 rightValue,
-                ""
+                "",
+                difference
             ]);
-            
-            // Remove from objects so we don't process them again
-            delete cardBrandTotals[brand];
-            delete nameTotals[brand];
         });
         
         // Then add any other card brands that might be in the data
@@ -542,21 +555,78 @@ function compareAndDisplayData(XLSX, file1, file2) {
         
         [...otherBrands].sort().forEach(brand => {
             const leftValue = cardBrandTotals[brand] ? 
-                parseFloat(cardBrandTotals[brand].toFixed(2)) : "";
+                parseFloat(cardBrandTotals[brand].toFixed(2)) : 0;
                 
             const rightValue = nameTotals[brand] ? 
-                parseFloat(nameTotals[brand].toFixed(2)) : "";
+                parseFloat(nameTotals[brand].toFixed(2)) : 0;
+            
+            // Calculate difference (Hub Report - Sales Report)
+            const difference = parseFloat((leftValue - rightValue).toFixed(2));
+            
+            // Create an object that includes the value and a "styles" property for Excel
+            const differenceCell = {
+                v: difference || 0, // The actual value
+                t: 'n',             // Type: number
+                s: {                // Style information
+                    fill: {
+                        fgColor: { rgb: difference < 0 ? "FFFF0000" : "FF00FF00" } // Red if negative, green if positive or zero
+                    }
+                }
+            };
                 
             filteredResults.push([
                 leftValue ? brand : "",
-                leftValue,
+                leftValue || "",
                 "",
                 rightValue ? brand : "",
-                rightValue,
-                ""
+                rightValue || "",
+                "",
+                difference || ""
             ]);
         });
     }
     
+    // Convert data to XLSX format with styles for colored cells
+    function downloadResults(data) {
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.aoa_to_sheet(data);
+        
+        // Apply conditional formatting to difference column in the summary section
+        const summaryStartRow = data.findIndex(row => row[0] === "Hub Report");
+        
+        if (summaryStartRow !== -1) {
+            // Process rows after the summary header
+            for (let rowIndex = summaryStartRow + 1; rowIndex < data.length; rowIndex++) {
+                const row = data[rowIndex];
+                if (row.length >= 7 && row[6] !== "" && !isNaN(parseFloat(row[6]))) {
+                    const differenceValue = parseFloat(row[6]);
+                    
+                    // Get cell reference for the difference cell (column G)
+                    const cellRef = XLSX.utils.encode_cell({r: rowIndex, c: 6});
+                    
+                    // Create cell with style
+                    if (!worksheet[cellRef]) worksheet[cellRef] = {};
+                    
+                    // Set fill color based on value
+                    worksheet[cellRef].s = {
+                        fill: {
+                            patternType: "solid",
+                            fgColor: { rgb: differenceValue < 0 ? "FFFF0000" : "FF00FF00" } // Red if negative, green otherwise
+                        },
+                        font: {
+                            color: { rgb: differenceValue < 0 ? "FFFFFFFF" : "FF000000" } // White text on red, black on green
+                        }
+                    };
+                }
+            }
+        }
+        
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Results');
+        
+        // Write file and trigger download
+        XLSX.writeFile(workbook, 'Comparison_Results.xlsx');
+    }
+    
+    // Return the data array for display
     return filteredResults;
 }
