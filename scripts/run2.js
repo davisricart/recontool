@@ -3,6 +3,8 @@
  * This function compares and reconciles data from two Excel files/sheets:
  * 1. Payments Hub Transaction
  * 2. Sales Totals
+ * 
+ * This JavaScript version replicates the VBA macro logic in the original "Sales Recon" Excel workbook
  */
 async function compareAndDisplayData(XLSX, file1Data, file2Data) {
   try {
@@ -63,6 +65,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const cardBrandColIndex = findColumnIndex(paymentsHubData[0], "Card Brand");
 
     // Calculate K-R (Total Transaction Amount - Cash Discounting Amount)
+    // This matches the VBA: "Range("AA2").FormulaR1C1 = "=RC[-16]-RC[-9]""
     const paymentsHubWithKR = paymentsHubData.map((row, index) => {
       if (index === 0) {
         // Add header for K-R
@@ -87,39 +90,49 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Process Sales Totals data
-    // Look for Name (card type) and Amount columns
-    const salesCardTypeIndex = findColumnIndex(salesTotalsData[0], "Name");
-    const salesDateIndex = findColumnIndex(salesTotalsData[0], "Date Closed");
-    const salesAmountIndex = findColumnIndex(salesTotalsData[0], "Amount");
+    // Find column indices in Sales Totals data
+    const salesNameColIndex = findColumnIndex(salesTotalsData[0], "Name");
+    const salesDateColIndex = findColumnIndex(salesTotalsData[0], "Date Closed");
+    const salesAmountColIndex = findColumnIndex(salesTotalsData[0], "Amount");
     
-    // Add Count column to track matching records
+    // Add Count column based on the COUNTIFS formula from the VBA:
+    // "=COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!C1,'Payments Hub Transaction'!RC24,'Sales Totals'!C5,'Payments Hub Transaction'!RC27)"
     const krColIndex = paymentsHubWithKR[0].length - 1;
     const paymentsHubWithCount = paymentsHubWithKR.map((row, index) => {
       if (index === 0) {
         // Add header for Count
         return [...row, "Count"];
       } else if (row.length > 0) {
-        // Count matching transactions - based on the Card Brand and date
+        // Calculate count based on matching date, card brand, and value in K-R field
         let count = 0;
         
-        // Compare hub date with sales date, considering different formats
+        // Format the date and card brand for comparison
         const hubDate = formatDate(row[dateColIndex]);
-        const cardBrand = row[cardBrandColIndex] ? row[cardBrandColIndex].toString().toLowerCase().trim() : "";
+        const hubCardBrand = normalize(row[cardBrandColIndex]);
+        const hubKR = parseFloat(row[krColIndex]) || 0;
         
+        // Count matching sales entries
         for (let i = 1; i < salesTotalsData.length; i++) {
           const salesRow = salesTotalsData[i];
-          if (salesRow && salesRow.length > Math.max(salesCardTypeIndex, salesDateIndex)) {
-            const salesDate = formatDate(salesRow[salesDateIndex]);
-            const salesCardType = salesRow[salesCardTypeIndex] ? 
-              salesRow[salesCardTypeIndex].toString().toLowerCase().trim() : "";
-            
-            // Match based on card type and date
-            if (hubDate && salesDate && salesCardType && 
-                salesCardType === cardBrand && 
-                salesDate === hubDate) {
-              count++;
-            }
+          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) continue;
+          
+          const salesDate = formatDate(salesRow[salesDateColIndex]);
+          const salesCardType = normalize(salesRow[salesNameColIndex]);
+          
+          // Parse the amount
+          let salesAmount = 0;
+          if (salesRow[salesAmountColIndex]) {
+            const amountStr = salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
+            salesAmount = parseFloat(amountStr) || 0;
+          }
+          
+          // Match on date, card type and similar amount
+          if (hubDate && salesDate && 
+              hubCardBrand && salesCardType && 
+              salesDate === hubDate && 
+              salesCardType === hubCardBrand &&
+              Math.abs(salesAmount - hubKR) < 0.01) {
+            count++;
           }
         }
         
@@ -128,56 +141,38 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Filter rows to get transactions in a fully dynamic way that still includes two Visa rows
-    // First, keep the header row
-    const filteredRows = [paymentsHubWithCount[0]];
+    // IMPORTANT: Filter records where Count > 0
+    // This is inverse of the VBA's filter: "Columns("AB:AB").AutoFilter Field:=28, Criteria1:="0""
+    // which filtered out rows with Count = 0, so we want to keep rows with Count > 0
+    const countColIndex = paymentsHubWithCount[0].length - 1;
+    const filteredRows = [];
     
-    // Function to normalize string values
-    const normalize = (value) => value ? value.toString().trim().toLowerCase() : "";
+    // Always include the header row
+    filteredRows.push(paymentsHubWithCount[0]);
     
-    // Track card brands that we've seen
-    const cardBrandCount = {};
-    
-    // First, organize the data by card brand
-    const rowsByCardBrand = {};
-    
+    // Only include rows where Count is non-zero
     for (let i = 1; i < paymentsHubWithCount.length; i++) {
       const row = paymentsHubWithCount[i];
-      if (row.length <= cardBrandColIndex) continue;
-      
-      const cardBrand = normalize(row[cardBrandColIndex]);
-      if (!cardBrand) continue;
-      
-      if (!rowsByCardBrand[cardBrand]) {
-        rowsByCardBrand[cardBrand] = [];
+      if (row.length > countColIndex) {
+        const countValue = parseInt(row[countColIndex]) || 0;
+        if (countValue > 0) {
+          filteredRows.push(row);
+        }
       }
+    }
+
+    // Sort by Card Brand descending (replicating the VBA sort)
+    // VBA: "Sort.SortFields.Add Key:=Range("E:E"), SortOn:=xlSortOnValues, Order:=xlDescending"
+    filteredRows.sort((a, b) => {
+      // Keep header row at the top
+      if (a === filteredRows[0]) return -1;
+      if (b === filteredRows[0]) return 1;
       
-      rowsByCardBrand[cardBrand].push(row);
-    }
-    
-    // Sort each card brand's rows alphabetically by customer name for consistency
-    Object.keys(rowsByCardBrand).forEach(cardBrand => {
-      rowsByCardBrand[cardBrand].sort((a, b) => {
-        const customerA = normalize(a[customerNameColIndex]);
-        const customerB = normalize(b[customerNameColIndex]);
-        return customerA.localeCompare(customerB);
-      });
-    });
-    
-    // Special handling for Visa - get the first two transactions (if available)
-    // This matches the behavior seen in the answers file where two Visa transactions are included
-    if (rowsByCardBrand['visa'] && rowsByCardBrand['visa'].length >= 2) {
-      filteredRows.push(rowsByCardBrand['visa'][0]);
-      filteredRows.push(rowsByCardBrand['visa'][1]);
-    } else if (rowsByCardBrand['visa'] && rowsByCardBrand['visa'].length === 1) {
-      filteredRows.push(rowsByCardBrand['visa'][0]);
-    }
-    
-    // Add one row for each other card brand
-    Object.keys(rowsByCardBrand).forEach(cardBrand => {
-      if (cardBrand !== 'visa' && rowsByCardBrand[cardBrand].length > 0) {
-        filteredRows.push(rowsByCardBrand[cardBrand][0]);
-      }
+      // Sort by Card Brand descending
+      const brandA = a[cardBrandColIndex] ? a[cardBrandColIndex].toString().toLowerCase() : "";
+      const brandB = b[cardBrandColIndex] ? b[cardBrandColIndex].toString().toLowerCase() : "";
+      
+      return brandB.localeCompare(brandA);
     });
 
     // Select visible columns for the report
@@ -193,7 +188,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
           "Total (-) Fee"
         ];
       } else {
-        // For date values, simplify to match the format in the answers file (3/13/25 0:00)
+        // Simplify date format to match the Final tab (MM/DD/YY 0:00)
         let dateValue = row[dateColIndex] || "";
         if (dateValue) {
           // Extract just the date part (mm/dd/yy)
@@ -204,20 +199,21 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
           }
         }
         
+        // Format currency and include the Total (-) Fee column (K-R)
         return [
           dateValue,
           row[customerNameColIndex] || "",
           formatCurrencyString(row[totalAmountColIndex]),
           formatCurrencyString(row[discountingAmountColIndex]),
           row[cardBrandColIndex] || "",
-          formatCurrencyString(row[krColIndex]) // K-R
+          formatCurrencyString(row[krColIndex]) // K-R value as "Total (-) Fee"
         ];
       }
     });
 
     // Calculate card brand totals from both data sources
     const paymentsHubTotals = calculateCardTotalsFromPaymentsHub(paymentsHubWithCount, cardBrandColIndex, krColIndex);
-    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesCardTypeIndex, salesAmountIndex);
+    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesNameColIndex, salesAmountColIndex);
 
     // Calculate differences
     const differences = {
@@ -227,7 +223,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0)
     };
 
-    // Create reconciliation summary with calculated values
+    // Create reconciliation summary with rounded values to match the Excel file
     const summaryData = [
       ["Hub Report", "Total", "", "Sales Report", "Total", "", "Difference"],
       [
@@ -300,6 +296,13 @@ function findColumnIndex(headerRow, columnName) {
   return headerRow.findIndex(header =>
     header && header.toString().toLowerCase().trim() === columnName.toLowerCase().trim()
   );
+}
+
+/**
+ * Helper function to normalize text values
+ */
+function normalize(value) {
+  return value ? value.toString().toLowerCase().trim() : "";
 }
 
 /**
@@ -392,13 +395,11 @@ function calculateCardTotalsFromSales(data, cardTypeIndex, amountIndex) {
 
 /**
  * Helper function to format date values for comparison
- * Handles different date formats
  */
 function formatDate(dateStr) {
   if (!dateStr) return "";
   
   // Try to extract date components from various formats
-  // First, clean up the string
   let cleanDateStr = dateStr.toString().trim();
   
   // Handle mm/dd/yyyy format
@@ -448,7 +449,9 @@ function formatDate(dateStr) {
   }
   
   // Return normalized format for comparison: MM/DD/YYYY
-  return month + "/" + day + "/" + year;
+  // But keep only last 2 digits of year for internal comparisons
+  const shortYear = year.length === 4 ? year.substring(2) : year;
+  return `${month}/${day}/${shortYear}`;
 }
 
 /**
