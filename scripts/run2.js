@@ -115,15 +115,15 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
         // Check Sales Totals for matches
         for (let i = 1; i < salesTotalsData.length; i++) {
           const salesRow = salesTotalsData[i];
-          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountIndex)) continue;
+          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) continue;
           
           const salesCardType = normalize(salesRow[salesNameColIndex]);
           const salesDate = formatDate(salesRow[salesDateColIndex]);
           
           // Parse the amount
           let salesAmount = 0;
-          if (salesRow[salesAmountIndex]) {
-            const amountStr = salesRow[salesAmountIndex].toString().replace(/[^\d.-]/g, "");
+          if (salesRow[salesAmountColIndex]) {
+            const amountStr = salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
             salesAmount = parseFloat(amountStr) || 0;
           }
           
@@ -164,11 +164,11 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
         // Check Sales Totals for matches
         for (let i = 1; i < salesTotalsData.length; i++) {
           const salesRow = salesTotalsData[i];
-          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountIndex)) continue;
+          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) continue;
           
           const salesCardType = salesRow[salesNameColIndex] ? salesRow[salesNameColIndex].toString().toLowerCase().trim() : "";
           const salesDate = salesRow[salesDateColIndex] ? formatDate(salesRow[salesDateColIndex]) : "";
-          const salesAmount = salesRow[salesAmountIndex] !== undefined ? parseFloat(salesRow[salesAmountIndex].toString().replace(/[^\d.-]/g, "")) : null;
+          const salesAmount = salesRow[salesAmountColIndex] !== undefined ? parseFloat(salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "")) : null;
           const salesCount = salesRow[6] !== undefined ? parseInt(salesRow[6].toString()) : null; // Column G (index 6) is Count
           
           // Check if all criteria match
@@ -255,7 +255,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
 
     // Calculate card brand totals from both data sources
     const paymentsHubTotals = calculateCardTotalsFromPaymentsHub(paymentsHubWithCount, cardBrandColIndex, krColIndex);
-    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesNameColIndex, salesAmountIndex);
+    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesNameColIndex, salesAmountColIndex);
 
     // Calculate differences
     const differences = {
