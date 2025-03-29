@@ -88,7 +88,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     });
 
     // Process Sales Totals data
-    // For Sales Totals, the structure is different - looking for Name (card type) and Amount columns
+    // Look for Name (card type) and Amount columns
     const salesCardTypeIndex = findColumnIndex(salesTotalsData[0], "Name");
     const salesDateIndex = findColumnIndex(salesTotalsData[0], "Date Closed");
     const salesAmountIndex = findColumnIndex(salesTotalsData[0], "Amount");
@@ -190,19 +190,6 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     });
 
     // Calculate card brand totals from both data sources
-    const paymentsHubTotals = calculateCardTotalsFromPaymentsHub(paymentsHubWithCount, cardBrandColIndex, krColIndex);
-    const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesCardTypeIndex, salesAmountIndex);
-
-    // Calculate differences
-    const differences = {
-      visa: (paymentsHubTotals.visa || 0) - (salesTotals.visa || 0),
-      mastercard: (paymentsHubTotals.mastercard || 0) - (salesTotals.mastercard || 0),
-      "american express": (paymentsHubTotals["american express"] || 0) - (salesTotals["american express"] || 0),
-      discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0)
-    };
-
-    // Calculate card brand totals from both data sources
-    // Use actual calculations instead of hardcoded values
     const paymentsHubTotals = calculateCardTotalsFromPaymentsHub(paymentsHubWithCount, cardBrandColIndex, krColIndex);
     const salesTotals = calculateCardTotalsFromSales(salesTotalsData, salesCardTypeIndex, salesAmountIndex);
 
