@@ -1,4 +1,10 @@
-/**
+// Check all four conditions
+                const dateMatches = firstFileDateStr && secondFileDateStr && 
+                    firstFileDateStr === secondFileDateStr;
+                
+                const nameMatches = secondFileName && cardBrand && (
+                    cardBrand.toLowerCase().includes(secondFileName) || 
+                    secondFileName.includes(cardBrand.toLowerCase())/**
  * This script processes two Excel files:
  * 1. For the first file, it keeps only the specified columns: "Date", "Customer Name", 
  *    "Total Transaction Amount", "Cash Discounting Amount", and "Card Brand".
@@ -100,7 +106,7 @@ function compareAndDisplayData(XLSX, file1, file2) {
     const resultData = [columnsToKeep.concat(newColumns)];
     
     // Process each row from the first file
-    jsonData1.forEach(row => {
+    jsonData1.forEach((row, rowIndex) => {
         const filteredRow = [];
         
         // Extract values for comparison before filtering
@@ -200,34 +206,25 @@ function compareAndDisplayData(XLSX, file1, file2) {
         // Add count value
         filteredRow.push(countMatches.toString());
         
-        // Add empty Final Count column for now (will be filled later if needed)
+        // Add placeholder for Final Count (will be calculated after processing second file)
         filteredRow.push("");
         
         resultData.push(filteredRow);
+        firstFileData.push(filteredRow);
     });
-    
-    // Store first file data for later comparison with second file
-    const firstFileData = resultData.slice(1); // Skip header row
     
     // Process the second file for display (if provided)
     // ================================================
     if (file2 && file2Headers.length > 0) {
-        // Add a blank row separator
-        resultData.push(Array(columnsToKeep.length + newColumns.length).fill(""));
+        // Create a separate array to store the Count2 values for each row in the second file
+        const secondFileWithCount2 = [];
         
-        // Add header row for second file
-        const secondFileHeadersWithCount2 = [...file2Headers, "Count2"];
-        resultData.push(secondFileHeadersWithCount2);
-        
-        // Process all data rows from second file
+        // Process all data rows from second file to calculate Count2 values
         jsonData2.forEach((row, rowIndex) => {
-            // Copy the row
+            // Make a copy of the row
             const processedRow = [...row];
             
-            // Perform COUNTIFS-like functionality for Count2 column
-            let countMatches = 0;
-            
-            // Get values from second file row for comparison
+            // Get values for comparison
             let secondFileDate = null;
             let secondFileName = "";
             let secondFileAmount = 0;
@@ -265,6 +262,8 @@ function compareAndDisplayData(XLSX, file1, file2) {
                 `${secondFileDate.getFullYear()}-${String(secondFileDate.getMonth() + 1).padStart(2, '0')}-${String(secondFileDate.getDate()).padStart(2, '0')}` : '';
             
             // Compare with each row from first file
+            let countMatches = 0;
+            
             firstFileData.forEach(firstFileRow => {
                 // Extract date, card brand, and K-R from first file row
                 let firstFileDate = null;
@@ -304,7 +303,95 @@ function compareAndDisplayData(XLSX, file1, file2) {
             // Add count value to Count2 column
             processedRow.push(countMatches.toString());
             
-            resultData.push(processedRow);
+            // Store the row with Count2 value
+            secondFileWithCount2.push(processedRow);
+        });
+        
+        // Now calculate Final Count for first file rows
+        firstFileData.forEach((firstFileRow, firstFileIndex) => {
+            const date = firstFileRow[0]; // Date at index 0
+            const cardBrand = String(firstFileRow[4] || "").trim().toLowerCase(); // Card Brand at index 4
+            const kr = parseFloat(firstFileRow[5] || 0); // K-R at index 5
+            const count = parseInt(firstFileRow[6] || 0); // Count at index 6
+            
+            // Parse date from MM/DD/YYYY format
+            let firstFileDate = null;
+            if (date) {
+                const parts = date.split('/');
+                if (parts.length === 3) {
+                    const month = parseInt(parts[0]) - 1;
+                    const day = parseInt(parts[1]);
+                    const year = parseInt(parts[2]);
+                    firstFileDate = new Date(year, month, day);
+                }
+            }
+            
+            const firstFileDateStr = firstFileDate instanceof Date ? 
+                `${firstFileDate.getFullYear()}-${String(firstFileDate.getMonth() + 1).padStart(2, '0')}-${String(firstFileDate.getDate()).padStart(2, '0')}` : '';
+            
+            // Calculate Final Count based on all four criteria
+            let finalCount = 0;
+            
+            secondFileWithCount2.forEach(secondFileRow => {
+                // Extract values from second file row
+                let secondFileDate = null;
+                if (dateClosedIndex !== -1 && dateClosedIndex < secondFileRow.length) {
+                    let dateValue = secondFileRow[dateClosedIndex];
+                    if (typeof dateValue === 'string') {
+                        try {
+                            secondFileDate = new Date(dateValue);
+                        } catch (e) {
+                            secondFileDate = null;
+                        }
+                    } else if (dateValue instanceof Date) {
+                        secondFileDate = dateValue;
+                    }
+                }
+                
+                const secondFileDateStr = secondFileDate instanceof Date ? 
+                    `${secondFileDate.getFullYear()}-${String(secondFileDate.getMonth() + 1).padStart(2, '0')}-${String(secondFileDate.getDate()).padStart(2, '0')}` : '';
+                
+                const secondFileName = nameIndex !== -1 && nameIndex < secondFileRow.length ?
+                    String(secondFileRow[nameIndex] || "").trim().toLowerCase() : "";
+                    
+                const secondFileAmount = amountIndex !== -1 && amountIndex < secondFileRow.length ?
+                    parseFloat(secondFileRow[amountIndex]) || 0 : 0;
+                    
+                const secondFileCount2 = parseInt(secondFileRow[secondFileRow.length - 1] || 0);
+                
+                // Check all four conditions
+                const dateMatches = firstFileDateStr && secondFileDateStr && 
+                    firstFileDateStr === secondFileDateStr;
+                
+                const nameMatches = secondFileName && cardBrand && (
+                    cardBrand.toLowerCase().includes(secondFileName) || 
+                    secondFileName.includes(cardBrand.toLowerCase())
+                );
+                
+                const amountMatches = Math.abs(kr - secondFileAmount) < 0.01;
+                
+                const countMatches = count === secondFileCount2;
+                
+                if (dateMatches && nameMatches && amountMatches && countMatches) {
+                    finalCount++;
+                }
+            });
+            
+            // Update Final Count in the result data
+            // (firstFileIndex + 1 because index 0 is the header row)
+            resultData[firstFileIndex + 1][7] = finalCount.toString();
+        });
+        
+        // Add a blank row separator
+        resultData.push(Array(columnsToKeep.length + newColumns.length).fill(""));
+        
+        // Add header row for second file
+        const secondFileHeadersWithCount2 = [...file2Headers, "Count2"];
+        resultData.push(secondFileHeadersWithCount2);
+        
+        // Add the second file data rows
+        secondFileWithCount2.forEach(row => {
+            resultData.push(row);
         });
     }
     
