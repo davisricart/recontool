@@ -85,7 +85,7 @@ function compareAndDisplayData(XLSX, file1, file2) {
     // Step 3: Filter First File and Add New Columns
     // Define columns to keep
     const columnsToKeep = ["Date", "Customer Name", "Total Transaction Amount", "Cash Discounting Amount", "Card Brand"];
-    const newColumns = ["K-R", "Count", "Final Count"];
+    const newColumns = ["Total (-) Fee", "Count", "Final Count"];
     
     // Create result array starting with header
     const resultData = [columnsToKeep.concat(newColumns)];
@@ -372,9 +372,13 @@ function compareAndDisplayData(XLSX, file1, file2) {
     }
     
     // Step 6: Filter results to only show rows with Final Count = 0
-    const filteredResults = [resultData[0]]; // Keep the header row
+    // and remove the Count and Final Count columns, and don't include second file data
     
-    // Add first file rows that have Final Count = 0
+    // Create a filtered result with only the columns we want to display
+    const displayColumns = ["Date", "Customer Name", "Total Transaction Amount", "Cash Discounting Amount", "Card Brand", "Total (-) Fee"];
+    const filteredResults = [displayColumns]; // New header with renamed column and without Count/Final Count
+    
+    // Add first file rows that have Final Count = 0, but without the Count and Final Count columns
     for (let i = 1; i < resultData.length; i++) {
         const row = resultData[i];
         
@@ -386,27 +390,8 @@ function compareAndDisplayData(XLSX, file1, file2) {
         // Check if Final Count is 0
         const finalCount = parseInt(row[7] || 0);
         if (finalCount === 0) {
-            filteredResults.push(row);
-        }
-    }
-    
-    // Find the separator row index
-    let separatorIndex = -1;
-    for (let i = 1; i < resultData.length; i++) {
-        if (resultData[i].every(cell => cell === "")) {
-            separatorIndex = i;
-            break;
-        }
-    }
-    
-    // If we found a separator (meaning we have second file data), add it and all subsequent rows
-    if (separatorIndex !== -1) {
-        // Add separator
-        filteredResults.push(Array(columnsToKeep.length + newColumns.length).fill(""));
-        
-        // Add second file header and data
-        for (let i = separatorIndex + 1; i < resultData.length; i++) {
-            filteredResults.push(resultData[i]);
+            // Add only the first 6 columns (the last one being "Total (-) Fee")
+            filteredResults.push(row.slice(0, 6));
         }
     }
     
