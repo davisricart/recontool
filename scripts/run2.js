@@ -371,5 +371,44 @@ function compareAndDisplayData(XLSX, file1, file2) {
         });
     }
     
-    return resultData;
+    // Step 6: Filter results to only show rows with Final Count = 0
+    const filteredResults = [resultData[0]]; // Keep the header row
+    
+    // Add first file rows that have Final Count = 0
+    for (let i = 1; i < resultData.length; i++) {
+        const row = resultData[i];
+        
+        // Stop when we reach the separator (empty row)
+        if (row.every(cell => cell === "")) {
+            break;
+        }
+        
+        // Check if Final Count is 0
+        const finalCount = parseInt(row[7] || 0);
+        if (finalCount === 0) {
+            filteredResults.push(row);
+        }
+    }
+    
+    // Find the separator row index
+    let separatorIndex = -1;
+    for (let i = 1; i < resultData.length; i++) {
+        if (resultData[i].every(cell => cell === "")) {
+            separatorIndex = i;
+            break;
+        }
+    }
+    
+    // If we found a separator (meaning we have second file data), add it and all subsequent rows
+    if (separatorIndex !== -1) {
+        // Add separator
+        filteredResults.push(Array(columnsToKeep.length + newColumns.length).fill(""));
+        
+        // Add second file header and data
+        for (let i = separatorIndex + 1; i < resultData.length; i++) {
+            filteredResults.push(resultData[i]);
+        }
+    }
+    
+    return filteredResults;
 }
