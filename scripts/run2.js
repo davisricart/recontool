@@ -23,7 +23,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       sheetStubs: true
     });
 
-    // Get sheets from the workbooks - handle different sheet names
+    // Get sheets from the workbooks
     const paymentsHubSheet = workbook1.Sheets[workbook1.SheetNames[0]];
     const salesTotalsSheet = workbook2.Sheets[workbook2.SheetNames[0]];
 
@@ -71,13 +71,13 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
         // Parse currency values properly by removing $ signs and other non-numeric characters
         let totalAmount = 0;
         if (row[totalAmountColIndex]) {
-          const totalStr = row[totalAmountColIndex].toString().replace(/[^\d.-]/g, '');
+          const totalStr = row[totalAmountColIndex].toString().replace(/[^\d.-]/g, "");
           totalAmount = parseFloat(totalStr) || 0;
         }
         
         let discountAmount = 0;
         if (row[discountingAmountColIndex]) {
-          const discountStr = row[discountingAmountColIndex].toString().replace(/[^\d.-]/g, '');
+          const discountStr = row[discountingAmountColIndex].toString().replace(/[^\d.-]/g, "");
           discountAmount = parseFloat(discountStr) || 0;
         }
         
@@ -128,8 +128,6 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Filter to create the final data - include all rows for now, even if count is 0
-    const countColIndex = paymentsHubWithCount[0].length - 1;
     // We won't filter based on count for now
     const filteredRows = paymentsHubWithCount;
 
@@ -152,7 +150,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
           formatCurrencyString(row[totalAmountColIndex]),
           formatCurrencyString(row[discountingAmountColIndex]),
           row[cardBrandColIndex] || "",
-          formatCurrency(row[krColIndex]) // K-R
+          formatCurrencyString(row[krColIndex]) // K-R
         ];
       }
     });
@@ -165,7 +163,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const differences = {
       visa: (paymentsHubTotals.visa || 0) - (salesTotals.visa || 0),
       mastercard: (paymentsHubTotals.mastercard || 0) - (salesTotals.mastercard || 0),
-      'american express': (paymentsHubTotals['american express'] || 0) - (salesTotals['american express'] || 0),
+      "american express": (paymentsHubTotals["american express"] || 0) - (salesTotals["american express"] || 0),
       discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0)
     };
 
@@ -192,12 +190,12 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       ],
       [
         "American Express", 
-        Math.round(paymentsHubTotals['american express'] || 0).toString(), 
+        Math.round(paymentsHubTotals["american express"] || 0).toString(), 
         "", 
         "American Express", 
-        Math.round(salesTotals['american express'] || 0).toString(), 
+        Math.round(salesTotals["american express"] || 0).toString(), 
         "", 
-        Math.round(differences['american express'] || 0).toString()
+        Math.round(differences["american express"] || 0).toString()
       ],
       [
         "Discover", 
@@ -251,7 +249,7 @@ function calculateCardTotalsFromPaymentsHub(data, cardBrandColIndex, krColIndex)
   const totals = {
     visa: 0,
     mastercard: 0,
-    'american express': 0,
+    "american express": 0,
     discover: 0
   };
   
@@ -268,13 +266,13 @@ function calculateCardTotalsFromPaymentsHub(data, cardBrandColIndex, krColIndex)
         
         if (!isNaN(amount)) {
           // Add amounts to the appropriate card brand
-          if (cardBrand === 'visa') {
+          if (cardBrand === "visa") {
             totals.visa += amount;
-          } else if (cardBrand === 'mastercard') {
+          } else if (cardBrand === "mastercard") {
             totals.mastercard += amount;
-          } else if (cardBrand === 'american express') {
-            totals['american express'] += amount;
-          } else if (cardBrand === 'discover') {
+          } else if (cardBrand === "american express") {
+            totals["american express"] += amount;
+          } else if (cardBrand === "discover") {
             totals.discover += amount;
           }
         }
@@ -292,7 +290,7 @@ function calculateCardTotalsFromSales(data, cardTypeIndex, amountIndex) {
   const totals = {
     visa: 0,
     mastercard: 0,
-    'american express': 0,
+    "american express": 0,
     discover: 0
   };
   
@@ -309,19 +307,19 @@ function calculateCardTotalsFromSales(data, cardTypeIndex, amountIndex) {
         // Parse the amount, removing currency symbols and spaces
         let amount = 0;
         if (row[amountIndex]) {
-          const amountStr = row[amountIndex].toString().replace(/[^\d.-]/g, '');
+          const amountStr = row[amountIndex].toString().replace(/[^\d.-]/g, "");
           amount = parseFloat(amountStr) || 0;
         }
         
         if (!isNaN(amount)) {
           // Add amounts to the appropriate card type
-          if (cardType === 'visa') {
+          if (cardType === "visa") {
             totals.visa += amount;
-          } else if (cardType === 'mastercard') {
+          } else if (cardType === "mastercard") {
             totals.mastercard += amount;
-          } else if (cardType === 'american express') {
-            totals['american express'] += amount;
-          } else if (cardType === 'discover') {
+          } else if (cardType === "american express") {
+            totals["american express"] += amount;
+          } else if (cardType === "discover") {
             totals.discover += amount;
           }
         }
@@ -337,7 +335,7 @@ function calculateCardTotalsFromSales(data, cardTypeIndex, amountIndex) {
  * Handles different date formats
  */
 function formatDate(dateStr) {
-  if (!dateStr) return '';
+  if (!dateStr) return "";
   
   // Try to extract date components from various formats
   // First, clean up the string
@@ -355,31 +353,31 @@ function formatDate(dateStr) {
   
   if (timestampRegex.test(cleanDateStr)) {
     const match = cleanDateStr.match(timestampRegex);
-    month = match[1].padStart(2, '0');
-    day = match[2].padStart(2, '0');
-    year = match[3].length === 2 ? (match[3] < '50' ? '20' + match[3] : '19' + match[3]) : match[3];
+    month = match[1].padStart(2, "0");
+    day = match[2].padStart(2, "0");
+    year = match[3].length === 2 ? (match[3] < "50" ? "20" + match[3] : "19" + match[3]) : match[3];
   } else if (dateRegex1.test(cleanDateStr)) {
     const match = cleanDateStr.match(dateRegex1);
-    month = match[1].padStart(2, '0');
-    day = match[2].padStart(2, '0');
+    month = match[1].padStart(2, "0");
+    day = match[2].padStart(2, "0");
     year = match[3];
   } else if (dateRegex2.test(cleanDateStr)) {
     const match = cleanDateStr.match(dateRegex2);
-    month = match[1].padStart(2, '0');
-    day = match[2].padStart(2, '0');
-    year = match[3].length === 2 ? (match[3] < '50' ? '20' + match[3] : '19' + match[3]) : match[3];
+    month = match[1].padStart(2, "0");
+    day = match[2].padStart(2, "0");
+    year = match[3].length === 2 ? (match[3] < "50" ? "20" + match[3] : "19" + match[3]) : match[3];
   } else if (dateRegex3.test(cleanDateStr)) {
     const match = cleanDateStr.match(dateRegex3);
     year = match[1];
-    month = match[2].padStart(2, '0');
-    day = match[3].padStart(2, '0');
+    month = match[2].padStart(2, "0");
+    day = match[3].padStart(2, "0");
   } else {
     // Try to use JavaScript's Date parsing as a fallback
     try {
       const date = new Date(cleanDateStr);
       if (!isNaN(date.getTime())) {
-        month = (date.getMonth() + 1).toString().padStart(2, '0');
-        day = date.getDate().toString().padStart(2, '0');
+        month = (date.getMonth() + 1).toString().padStart(2, "0");
+        day = date.getDate().toString().padStart(2, "0");
         year = date.getFullYear().toString();
       } else {
         return cleanDateStr; // Return original if parsing fails
@@ -390,41 +388,7 @@ function formatDate(dateStr) {
   }
   
   // Return normalized format for comparison: MM/DD/YYYY
-  return `${month}/${day}/${year}`;
-}
-
-/**
- * Helper function to format currency values for display
- * Includes $ sign and spacing to match the expected format
- */
-function formatCurrency(value) {
-  if (value === null || value === undefined || isNaN(parseFloat(value))) {
-    return '$0.00 ';
-  }
-  
-  const numValue = parseFloat(value);
-  return '
-
-/**
- * Helper function to format currency string values
- * Preserves original currency format with $ sign for display
- */
-function formatCurrencyString(value) {
-  if (!value) return '';
-  
-  // Extract the numeric part from currency string
-  const numStr = value.toString().replace(/[^\d.-]/g, '');
-  const numValue = parseFloat(numStr);
-  
-  if (isNaN(numValue)) {
-    return '';
-  }
-  
-  // Return with dollar sign to match the expected format
-  return '
- + numValue.toFixed(2) + ' ';
-}
- + numValue.toFixed(2) + ' ';
+  return month + "/" + day + "/" + year;
 }
 
 /**
@@ -432,17 +396,16 @@ function formatCurrencyString(value) {
  * Preserves original currency format with $ sign for display
  */
 function formatCurrencyString(value) {
-  if (!value) return '';
+  if (!value) return "";
   
   // Extract the numeric part from currency string
-  const numStr = value.toString().replace(/[^\d.-]/g, '');
+  const numStr = value.toString().replace(/[^\d.-]/g, "");
   const numValue = parseFloat(numStr);
   
   if (isNaN(numValue)) {
-    return '';
+    return "";
   }
   
   // Return with dollar sign to match the expected format
-  return '
- + numValue.toFixed(2) + ' ';
+  return "$" + numValue.toFixed(2) + " ";
 }
