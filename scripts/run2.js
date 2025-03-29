@@ -192,7 +192,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     // Always include the header row
     filteredRows.push(paymentsHubWithFinalCount[0]);
     
-    // Only include rows where Final Count is ZERO (matching the VBA filter)
+    // Include all rows where Final Count is ZERO (matching the VBA filter)
     for (let i = 1; i < paymentsHubWithFinalCount.length; i++) {
       const row = paymentsHubWithFinalCount[i];
       if (row.length > finalCountColIndex) {
