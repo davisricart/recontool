@@ -525,17 +525,6 @@ function compareAndDisplayData(XLSX, file1, file2) {
             // Calculate difference (Hub Report - Sales Report)
             const difference = parseFloat((leftValue - rightValue).toFixed(2));
                 
-            // Create an object that includes the value and a "styles" property for Excel
-            const differenceCell = {
-                v: difference, // The actual value
-                t: 'n',        // Type: number
-                s: {           // Style information
-                    fill: {
-                        fgColor: { rgb: difference < 0 ? "FFFF0000" : "FF00FF00" } // Red if negative, green if positive or zero
-                    }
-                }
-            };
-                
             filteredResults.push([
                 brand,
                 leftValue,
@@ -545,12 +534,16 @@ function compareAndDisplayData(XLSX, file1, file2) {
                 "",
                 difference
             ]);
+            
+            // Remove from objects so we don't process them again
+            delete cardBrandTotals[brand];
+            delete nameTotals[brand];
         });
         
-        // Then add any other card brands that might be in the data
+        // Then add any other card brands that might be in the data (excluding the common ones)
         const otherBrands = new Set([
-            ...Object.keys(cardBrandTotals).filter(b => !b.toLowerCase().includes("cash")),
-            ...Object.keys(nameTotals).filter(n => !n.toLowerCase().includes("cash"))
+            ...Object.keys(cardBrandTotals).filter(b => !b.toLowerCase().includes("cash") && !commonCardBrands.includes(b)),
+            ...Object.keys(nameTotals).filter(n => !n.toLowerCase().includes("cash") && !commonCardBrands.includes(n))
         ]);
         
         [...otherBrands].sort().forEach(brand => {
@@ -562,17 +555,6 @@ function compareAndDisplayData(XLSX, file1, file2) {
             
             // Calculate difference (Hub Report - Sales Report)
             const difference = parseFloat((leftValue - rightValue).toFixed(2));
-            
-            // Create an object that includes the value and a "styles" property for Excel
-            const differenceCell = {
-                v: difference || 0, // The actual value
-                t: 'n',             // Type: number
-                s: {                // Style information
-                    fill: {
-                        fgColor: { rgb: difference < 0 ? "FFFF0000" : "FF00FF00" } // Red if negative, green if positive or zero
-                    }
-                }
-            };
                 
             filteredResults.push([
                 leftValue ? brand : "",
@@ -586,47 +568,56 @@ function compareAndDisplayData(XLSX, file1, file2) {
         });
     }
     
-    // Convert data to XLSX format with styles for colored cells
-    function downloadResults(data) {
-        const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.aoa_to_sheet(data);
-        
-        // Apply conditional formatting to difference column in the summary section
-        const summaryStartRow = data.findIndex(row => row[0] === "Hub Report");
-        
-        if (summaryStartRow !== -1) {
-            // Process rows after the summary header
-            for (let rowIndex = summaryStartRow + 1; rowIndex < data.length; rowIndex++) {
-                const row = data[rowIndex];
-                if (row.length >= 7 && row[6] !== "" && !isNaN(parseFloat(row[6]))) {
-                    const differenceValue = parseFloat(row[6]);
-                    
-                    // Get cell reference for the difference cell (column G)
-                    const cellRef = XLSX.utils.encode_cell({r: rowIndex, c: 6});
-                    
-                    // Create cell with style
-                    if (!worksheet[cellRef]) worksheet[cellRef] = {};
-                    
-                    // Set fill color based on value
-                    worksheet[cellRef].s = {
-                        fill: {
-                            patternType: "solid",
-                            fgColor: { rgb: differenceValue < 0 ? "FFFF0000" : "FF00FF00" } // Red if negative, green otherwise
-                        },
-                        font: {
-                            color: { rgb: differenceValue < 0 ? "FFFFFFFF" : "FF000000" } // White text on red, black on green
-                        }
-                    };
-                }
-            }
+// If the cell colors don't work when using the website's built-in downloadResults function,
+// We need to create a compatible version for the website code
+function downloadResults(results) {
+    // Create a workbook and worksheet
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(results);
+    
+    // Find the summary section
+    let summaryRowStart = -1;
+    for (let i = 0; i < results.length; i++) {
+        if (results[i][0] === "Hub Report") {
+            summaryRowStart = i;
+            break;
         }
-        
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Results');
-        
-        // Write file and trigger download
-        XLSX.writeFile(workbook, 'Comparison_Results.xlsx');
     }
     
-    // Return the data array for display
-    return filteredResults;
+    // If we found the summary section, add cell styling
+    if (summaryRowStart > 0) {
+        // Add cell styles for the difference column
+        for (let i = summaryRowStart + 1; i < results.length; i++) {
+            const row = results[i];
+            if (row.length >= 7 && row[6] !== "" && !isNaN(parseFloat(row[6]))) {
+                const difference = parseFloat(row[6]);
+                const cellRef = XLSX.utils.encode_cell({r: i, c: 6}); // Column G
+                
+                // Apply the style
+                if (!worksheet[cellRef]) worksheet[cellRef] = {};
+                worksheet[cellRef].s = {
+                    fill: {
+                        patternType: "solid",
+                        fgColor: { rgb: difference < 0 ? "FFFF0000" : "FF92D050" } // Red if negative, green if positive/zero
+                    },
+                    font: {
+                        color: { rgb: difference < 0 ? "FFFFFFFF" : "FF000000" } // White text on red, black on green
+                    },
+                    alignment: {
+                        horizontal: "right"
+                    }
+                };
+            }
+        }
+    }
+    
+    // Add the worksheet to the workbook
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
+    
+    // Write the workbook and trigger download
+    XLSX.writeFile(workbook, "Comparison_Results.xlsx");
+}
+
+// Return the filtered results data
+return filteredResults;
 }
