@@ -141,20 +141,65 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // IMPORTANT: Filter records where Count = 0 
-    // This exactly matches the VBA's filter: "Columns("AB:AB").AutoFilter Field:=28, Criteria1:="0""
-    const countColIndex = paymentsHubWithCount[0].length - 1;
+    // Add the Final Count column (AC) based on a different COUNTIFS formula
+    // "=COUNTIFS('Sales Totals'!$A:$A,'Payments Hub Transaction'!$X2,'Sales Totals'!$B:$B,'Payments Hub Transaction'!$AH2,'Sales Totals'!$E:$E,'Payments Hub Transaction'!$AA2,'Sales Totals'!$G:$G,'Payments Hub Transaction'!$AB2)"
+    // This compares:
+    // - Card Brand (Column X) with Sales Totals Name (Column A)
+    // - Date (Column AH) with Sales Totals Date Closed (Column B)
+    // - K-R amount (Column AA) with Sales Totals Amount (Column E)
+    // - Count (Column AB) with Sales Totals Count (Column G)
+    
+    const paymentsHubWithFinalCount = paymentsHubWithCount.map((row, index) => {
+      if (index === 0) {
+        // Add header for Final Count
+        return [...row, "Final Count"];
+      } else if (row.length > 0) {
+        // Calculate Final Count
+        let finalCount = 0;
+        
+        // Get values from Payments Hub
+        const cardBrand = row[cardBrandColIndex] ? row[cardBrandColIndex].toString().toLowerCase().trim() : "";
+        const date = row[dateColIndex] ? formatDate(row[dateColIndex]) : "";
+        const krValue = row[krColIndex] !== undefined ? parseFloat(row[krColIndex].toString().replace(/[^\d.-]/g, "")) : null;
+        const count = row[countColIndex] !== undefined ? parseInt(row[countColIndex].toString()) : null;
+        
+        // Check Sales Totals for matches
+        for (let i = 1; i < salesTotalsData.length; i++) {
+          const salesRow = salesTotalsData[i];
+          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountIndex)) continue;
+          
+          const salesCardType = salesRow[salesNameColIndex] ? salesRow[salesNameColIndex].toString().toLowerCase().trim() : "";
+          const salesDate = salesRow[salesDateColIndex] ? formatDate(salesRow[salesDateColIndex]) : "";
+          const salesAmount = salesRow[salesAmountIndex] !== undefined ? parseFloat(salesRow[salesAmountIndex].toString().replace(/[^\d.-]/g, "")) : null;
+          const salesCount = salesRow[6] !== undefined ? parseInt(salesRow[6].toString()) : null; // Column G (index 6) is Count
+          
+          // Check if all criteria match
+          if (cardBrand === salesCardType && 
+              date === salesDate && 
+              Math.abs((krValue || 0) - (salesAmount || 0)) < 0.01 &&
+              count === salesCount) {
+            finalCount++;
+          }
+        }
+        
+        return [...row, finalCount];
+      }
+      return row;
+    });
+    
+    // Filter records where Final Count = 0 (Column AC)
+    const finalCountColIndex = paymentsHubWithFinalCount[0].length - 1;
     const filteredRows = [];
     
     // Always include the header row
-    filteredRows.push(paymentsHubWithCount[0]);
+    filteredRows.push(paymentsHubWithFinalCount[0]);
     
-    // Only include rows where Count is ZERO (matching the VBA filter)
-    for (let i = 1; i < paymentsHubWithCount.length; i++) {
-      const row = paymentsHubWithCount[i];
-      if (row.length > countColIndex) {
-        const countValue = parseInt(row[countColIndex]) || 0;
-        if (countValue === 0) {
+    // Only include rows where Final Count is ZERO (matching the VBA filter)
+    for (let i = 1; i < paymentsHubWithFinalCount.length; i++) {
+      const row = paymentsHubWithFinalCount[i];
+      if (row.length > finalCountColIndex) {
+        const finalCountValue = parseInt(row[finalCountColIndex]) || 0;
+        if (finalCountValue === 0) {
           filteredRows.push(row);
         }
       }
