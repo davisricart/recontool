@@ -137,6 +137,8 @@ function compareAndDisplayData(XLSX, file1, file2) {
         const totalAmount = parseFloat(row["Total Transaction Amount"]) || 0;
         const discountAmount = parseFloat(row["Cash Discounting Amount"]) || 0;
         krValue = totalAmount - discountAmount;
+        
+        // Add K-R value (formatted to 2 decimal places)
         filteredRow.push(krValue.toFixed(2));
         
         // Calculate Count - matches in second file
@@ -356,19 +358,6 @@ function compareAndDisplayData(XLSX, file1, file2) {
             // Update Final Count in result data (index + 1 because index 0 is header)
             resultData[index + 1][7] = finalCount.toString();
         });
-        
-        // Step 6: Add Second File Data to Result
-        // Add separator row
-        resultData.push(Array(columnsToKeep.length + newColumns.length).fill(""));
-        
-        // Add header row for second file
-        const secondFileHeadersWithCount2 = [...file2Headers, "Count2"];
-        resultData.push(secondFileHeadersWithCount2);
-        
-        // Add second file data rows
-        secondFileWithCount2.forEach(row => {
-            resultData.push(row);
-        });
     }
     
     // Step 6: Filter results to only show rows with Final Count = 0
@@ -410,6 +399,229 @@ function compareAndDisplayData(XLSX, file1, file2) {
             }
             
             filteredResults.push(displayRow);
+        }
+    }
+    
+    // Calculate totals for filtered results
+    if (filteredResults.length > 1) {
+        const totalRow = ["", "TOTALS:", 0, 0, "", 0];
+        
+        // Sum up the numeric columns
+        for (let i = 1; i < filteredResults.length; i++) {
+            // Total Transaction Amount (index 2)
+            totalRow[2] += parseFloat(filteredResults[i][2] || 0);
+            
+            // Cash Discounting Amount (index 3)
+            totalRow[3] += parseFloat(filteredResults[i][3] || 0);
+            
+            // Total (-) Fee (index 5)
+            totalRow[5] += parseFloat(filteredResults[i][5] || 0);
+        }
+        
+        // Format totals to 2 decimal places
+        totalRow[2] = parseFloat(totalRow[2].toFixed(2));
+        totalRow[3] = parseFloat(totalRow[3].toFixed(2));
+        totalRow[5] = parseFloat(totalRow[5].toFixed(2));
+        
+        // Add totals row
+        filteredResults.push(totalRow);
+        
+        // Add two blank rows as separators
+        filteredResults.push(["", "", "", "", "", ""]);
+        filteredResults.push(["", "", "", "", "", ""]);
+        
+        // Add summary for the first file ("Hub Report")
+        // Header for first file summary
+        filteredResults.push(["Hub Report", "Total", "", "", "", ""]);
+        
+        // Collect unique card brands and totals from first file
+        const cardBrandTotals = {};
+        
+        // Process all rows from the first file before filtering
+        for (let i = 1; i < resultData.length; i++) {
+            const row = resultData[i];
+            
+            // Stop at separator row
+            if (row.every(cell => cell === "")) {
+                break;
+            }
+            
+            const cardBrand = row[4]; // Card Brand at index 4
+            // Skip any row where the card brand contains "cash" (case-insensitive)
+            if (cardBrand && cardBrand.toLowerCase().includes("cash")) {
+                continue;
+            }
+            
+            const netAmount = parseFloat(row[5] || 0); // Total (-) Fee
+            
+            if (cardBrand) {
+                if (!cardBrandTotals[cardBrand]) {
+                    cardBrandTotals[cardBrand] = 0;
+                }
+                
+                cardBrandTotals[cardBrand] += netAmount;
+            }
+        }
+        
+        // Add rows for each card brand
+        const commonCardBrands = ["Visa", "Mastercard", "American Express", "Discover"];
+        
+        // First add the common card brands in a specific order
+        commonCardBrands.forEach(brand => {
+            if (cardBrandTotals[brand]) {
+                filteredResults.push([
+                    brand,
+                    parseFloat(cardBrandTotals[brand].toFixed(2)),
+                    "", "", "", ""
+                ]);
+                
+                // Remove from the object so we don't process it again
+                delete cardBrandTotals[brand];
+            } else {
+                // Add row with zeros if this brand doesn't exist in the data
+                filteredResults.push([brand, 0, "", "", "", ""]);
+            }
+        });
+        
+        // Then add any other card brands that might be in the data
+        Object.keys(cardBrandTotals).sort().forEach(brand => {
+            // Skip if brand contains "cash" (case-insensitive)
+            if (brand.toLowerCase().includes("cash")) {
+                return;
+            }
+            
+            filteredResults.push([
+                brand,
+                parseFloat(cardBrandTotals[brand].toFixed(2)),
+                "", "", "", ""
+            ]);
+        });
+        
+        // Calculate and add grand total
+        let totalNetAmount = 0;
+        
+        // Calculate the sum directly from the card brand totals
+        Object.entries(cardBrandTotals).forEach(([brand, amount]) => {
+            // Skip if brand contains "cash" (case-insensitive)
+            if (!brand.toLowerCase().includes("cash")) {
+                totalNetAmount += amount;
+            }
+        });
+        
+        // Add the common brands we already processed
+        commonCardBrands.forEach(brand => {
+            if (cardBrandTotals[brand] !== undefined) {
+                totalNetAmount += cardBrandTotals[brand];
+            }
+        });
+        
+        filteredResults.push(["TOTAL", parseFloat(totalNetAmount.toFixed(2)), "", "", "", ""]);
+        
+        // Add blank row
+        filteredResults.push(["", "", "", "", "", ""]);
+        
+        // Process the second file if available
+        if (file2 && file2Headers.length > 0 && nameIndex !== -1 && amountIndex !== -1) {
+            // Add summary for the second file ("Sales Report")
+            // Header for second file summary
+            filteredResults.push(["Sales Report", "Total", "", "", "", ""]);
+            
+            // Collect unique names and totals from second file
+            const nameTotals = {};
+            
+            // Common names to match card brands (case-insensitive)
+            const commonNames = {
+                "visa": "Visa",
+                "mastercard": "Mastercard",
+                "master": "Mastercard",
+                "american express": "American Express",
+                "amex": "American Express",
+                "discover": "Discover"
+            };
+            
+            // Process all rows from the second file
+            jsonData2.forEach(row => {
+                if (row.length > Math.max(nameIndex, amountIndex)) {
+                    const name = String(row[nameIndex] || "").trim();
+                    // Skip if name contains "cash" (case-insensitive)
+                    if (name.toLowerCase().includes("cash")) {
+                        return;
+                    }
+                    
+                    const amount = parseFloat(row[amountIndex]) || 0;
+                    
+                    if (name) {
+                        let displayName = name;
+                        
+                        // Try to match with common card brand names
+                        const lowerName = name.toLowerCase();
+                        for (const [key, value] of Object.entries(commonNames)) {
+                            if (lowerName.includes(key) || key.includes(lowerName)) {
+                                displayName = value;
+                                break;
+                            }
+                        }
+                        
+                        if (!nameTotals[displayName]) {
+                            nameTotals[displayName] = 0;
+                        }
+                        
+                        nameTotals[displayName] += amount;
+                    }
+                }
+            });
+            
+            // Add rows for each name in the same order as the first section
+            // First add common brands in the specific order
+            commonCardBrands.forEach(brand => {
+                if (nameTotals[brand]) {
+                    filteredResults.push([
+                        brand,
+                        parseFloat(nameTotals[brand].toFixed(2)),
+                        "", "", "", ""
+                    ]);
+                    
+                    // Remove from the object so we don't process it again
+                    delete nameTotals[brand];
+                } else {
+                    // Add row with zeros if this brand doesn't exist in the data
+                    filteredResults.push([brand, 0, "", "", "", ""]);
+                }
+            });
+            
+            // Then add any other names that might be in the data
+            Object.keys(nameTotals).sort().forEach(name => {
+                // Skip if name contains "cash" (case-insensitive)
+                if (name.toLowerCase().includes("cash")) {
+                    return;
+                }
+                
+                filteredResults.push([
+                    name,
+                    parseFloat(nameTotals[name].toFixed(2)),
+                    "", "", "", ""
+                ]);
+            });
+            
+            // Calculate and add grand total
+            let totalSalesAmount = 0;
+            
+            // Calculate the sum directly from the name totals
+            Object.entries(nameTotals).forEach(([name, amount]) => {
+                // Skip if name contains "cash" (case-insensitive)
+                if (!name.toLowerCase().includes("cash")) {
+                    totalSalesAmount += amount;
+                }
+            });
+            
+            // Add the common brands we already processed
+            commonCardBrands.forEach(brand => {
+                if (nameTotals[brand] !== undefined) {
+                    totalSalesAmount += nameTotals[brand];
+                }
+            });
+            
+            filteredResults.push(["TOTAL", parseFloat(totalSalesAmount.toFixed(2)), "", "", "", ""]);
         }
     }
     
