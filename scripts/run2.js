@@ -3,8 +3,6 @@
  * This function compares and reconciles data from two Excel files/sheets:
  * 1. Payments Hub Transaction
  * 2. Sales Totals
- * 
- * This JavaScript version replicates the VBA macro logic in the original "Sales Recon" Excel workbook
  */
 async function compareAndDisplayData(XLSX, file1Data, file2Data) {
   try {
@@ -70,7 +68,6 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const salesAmountColIndex = findColumnIndex(salesTotalsData[0], "Amount");
 
     // Calculate K-R (Total Transaction Amount - Cash Discounting Amount)
-    // This matches the VBA: "Range("AA1").FormulaR1C1 = "K-R" and Range("AA2").FormulaR1C1 = "=RC[-16]-RC[-9]""
     const paymentsHubWithKR = paymentsHubData.map((row, index) => {
       if (index === 0) {
         // Add header for K-R
@@ -98,9 +95,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     // Get the K-R column index
     const krColIndex = paymentsHubWithKR[0].length - 1;
 
-    // Add Count column based on the COUNTIFS formula from the VBA:
-    // "=COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!C1,'Payments Hub Transaction'!RC24,'Sales Totals'!C5,'Payments Hub Transaction'!RC27)"
-    // This corresponds to matching the Sales Totals card type, date, and amount with Payments Hub data
+    // Add Count column based on the COUNTIFS formula from the VBA
     const paymentsHubWithCount = paymentsHubWithKR.map((row, index) => {
       if (index === 0) {
         // Add header for Count
@@ -145,8 +140,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     // Get the Count column index
     const countColIndex = paymentsHubWithCount[0].length - 1;
 
-    // Add Final Count column (column AC in VBA)
-    // This needs to properly implement the COUNTIFS logic from the VBA code
+    // Add Final Count column
     const paymentsHubWithFinalCount = paymentsHubWithCount.map((row, index) => {
       if (index === 0) {
         // Add header for Final Count
@@ -177,7 +171,6 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
           }
           
           // Match on exact date, card type, amount, and any other criteria
-          // This is the key part that matches the VBA COUNTIFS criteria
           if (hubDate === salesDate && 
               hubCardBrand === salesCardType && 
               Math.abs(hubKR - salesAmount) < 0.01) {
@@ -192,9 +185,8 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
 
     // Get the Final Count column index
     const finalCountColIndex = paymentsHubWithFinalCount[0].length - 1;
-
+    
     // Filter rows where Final Count = 0
-    // This replicates the VBA filter: "Columns("AC:AC").AutoFilter Field:=29, Criteria1:="0""
     const filteredRows = [paymentsHubWithFinalCount[0]]; // Always include header row
     
     for (let i = 1; i < paymentsHubWithFinalCount.length; i++) {
@@ -208,7 +200,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       }
     }
 
-    // Sort by Total Transaction Amount descending (similar to VBA sort)
+    // Sort by Total Transaction Amount descending
     filteredRows.sort((a, b) => {
       // Keep header row at the top
       if (a === filteredRows[0]) return -1;
@@ -229,9 +221,6 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       
       return amountB - amountA; // Descending order
     });
-
-    // Do not limit rows - keep all rows where Final Count is 0
-    // This ensures we're showing exactly what the VBA code shows
 
     // Create the final output data with selected columns
     const finalData = filteredRows.map((row, index) => {
@@ -264,7 +253,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       visa: 0,
       mastercard: 0,
       "american express": 0,
-      discover: 0 // Added Discover
+      discover: 0
     };
     
     for (let i = 1; i < paymentsHubWithCount.length; i++) {
@@ -290,7 +279,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       visa: 0,
       mastercard: 0,
       "american express": 0,
-      discover: 0 // Added Discover
+      discover: 0
     };
     
     for (let i = 1; i < salesTotalsData.length; i++) {
@@ -321,10 +310,10 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       visa: (paymentsHubTotals.visa || 0) - (salesTotals.visa || 0),
       mastercard: (paymentsHubTotals.mastercard || 0) - (salesTotals.mastercard || 0),
       "american express": (paymentsHubTotals["american express"] || 0) - (salesTotals["american express"] || 0),
-      discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0) // Added Discover
+      discover: (paymentsHubTotals.discover || 0) - (salesTotals.discover || 0)
     };
 
-    // Create summary section data - matches the VBA section that creates I1:O4
+    // Create summary section data
     const summaryData = [
       ["Hub Report", "Total", "", "Hub Report", "Total", "", "Difference"],
       [
@@ -366,7 +355,6 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     ];
 
     // Combine finalData with summaryData into a single result dataset
-    // This matches the expected return format in the original code
     const resultData = [];
     
     // Determine the max number of rows needed
@@ -382,7 +370,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       resultData.push([...finalRow, "", ...summaryRow]);
     }
 
-    // Return the combined data as a flat array
+    // Return the combined data as a flat array with all columns
     return resultData;
 
   } catch (error) {
@@ -415,7 +403,6 @@ function normalize(value) {
 
 /**
  * Helper function to format date values for comparison
- * Converts various date formats to a standard MM/DD/YY format
  */
 function formatDate(dateStr) {
   if (!dateStr) return "";
@@ -457,7 +444,6 @@ function formatDate(dateStr) {
 
 /**
  * Format date for display in the final output
- * Adds "0:00" time component to match the VBA output format
  */
 function formatDateForDisplay(dateStr) {
   if (!dateStr) return "";
@@ -487,6 +473,6 @@ function formatCurrencyString(value) {
   
   if (isNaN(numValue)) return "";
   
-      // Format with 2 decimal places and $ sign
-  return `${numValue.toFixed(2)} `; // Added space after the amount to match Excel format
+  // Format with 2 decimal places and $ sign
+  return `$${numValue.toFixed(2)} `; // Added space after the amount to match Excel format
 }
