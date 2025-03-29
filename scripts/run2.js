@@ -142,28 +142,75 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
 
-    // Filter rows where Count = 0 (this matches the VBA filter operation)
-    // "Columns("AB:AB").AutoFilter Field:=28, Criteria1:="0""
+    // Add Final Count column (column AC in VBA)
+    // This needs to properly implement the COUNTIFS logic from the VBA code
+    const paymentsHubWithFinalCount = paymentsHubWithCount.map((row, index) => {
+      if (index === 0) {
+        // Add header for Final Count
+        return [...row, "Final Count"];
+      } else if (row.length > 0) {
+        // Get values needed for comparison
+        const hubDate = formatDate(row[dateColIndex]);
+        const hubCardBrand = normalize(row[cardBrandColIndex]);
+        const hubKR = row[krColIndex] !== undefined ? parseFloat(row[krColIndex]) : 0;
+        const hubCount = row[countColIndex] !== undefined ? parseInt(row[countColIndex]) : 0;
+        
+        // Count exact matches in Sales Totals
+        let finalCount = 0;
+        
+        for (let i = 1; i < salesTotalsData.length; i++) {
+          const salesRow = salesTotalsData[i];
+          if (salesRow.length <= Math.max(salesNameColIndex, salesDateColIndex, salesAmountColIndex)) {
+            continue;
+          }
+          
+          const salesCardType = normalize(salesRow[salesNameColIndex]);
+          const salesDate = formatDate(salesRow[salesDateColIndex]);
+          let salesAmount = 0;
+          
+          if (salesRow[salesAmountColIndex]) {
+            const amountStr = salesRow[salesAmountColIndex].toString().replace(/[^\d.-]/g, "");
+            salesAmount = parseFloat(amountStr) || 0;
+          }
+          
+          // Match on exact date, card type, amount, and any other criteria
+          // This is the key part that matches the VBA COUNTIFS criteria
+          if (hubDate === salesDate && 
+              hubCardBrand === salesCardType && 
+              Math.abs(hubKR - salesAmount) < 0.01) {
+            finalCount++;
+          }
+        }
+        
+        return [...row, finalCount];
+      }
+      return row;
+    });
+
+    // Get the Count and Final Count column indices
     const countColIndex = paymentsHubWithCount[0].length - 1;
+    const finalCountColIndex = paymentsHubWithFinalCount[0].length - 1;
     
-    // Create the Final data by filtering rows where Count = 0
-    const finalRows = [paymentsHubWithCount[0]]; // Always include header row
+    // Filter rows where Final Count = 0
+    // This replicates the VBA filter: "Columns("AC:AC").AutoFilter Field:=29, Criteria1:="0""
+    const filteredRows = [paymentsHubWithFinalCount[0]]; // Always include header row
     
-    for (let i = 1; i < paymentsHubWithCount.length; i++) {
-      const row = paymentsHubWithCount[i];
-      if (row.length > countColIndex) {
-        const countValue = parseInt(row[countColIndex]) || 0;
-        if (countValue === 0) {
-          finalRows.push(row);
+    for (let i = 1; i < paymentsHubWithFinalCount.length; i++) {
+      const row = paymentsHubWithFinalCount[i];
+      if (row.length > finalCountColIndex) {
+        // Check if Final Count is 0
+        const finalCountValue = parseInt(row[finalCountColIndex]) || 0;
+        if (finalCountValue === 0) {
+          filteredRows.push(row);
         }
       }
     }
 
     // Sort by Total Transaction Amount descending (similar to VBA sort)
-    finalRows.sort((a, b) => {
+    filteredRows.sort((a, b) => {
       // Keep header row at the top
-      if (a === finalRows[0]) return -1;
-      if (b === finalRows[0]) return 1;
+      if (a === filteredRows[0]) return -1;
+      if (b === filteredRows[0]) return 1;
       
       // Parse amounts for sorting
       let amountA = 0;
@@ -181,8 +228,11 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return amountB - amountA; // Descending order
     });
 
+    // Do not limit rows - keep all rows where Final Count is 0
+    // This ensures we're showing exactly what the VBA code shows
+
     // Create the final output data with selected columns
-    const finalData = finalRows.map((row, index) => {
+    const finalData = filteredRows.map((row, index) => {
       if (index === 0) {
         // Use the exact header names from the VBA code
         return [
@@ -211,7 +261,8 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const paymentsHubTotals = {
       visa: 0,
       mastercard: 0,
-      "american express": 0
+      "american express": 0,
+      discover: 0 // Added Discover
     };
     
     for (let i = 1; i < paymentsHubWithCount.length; i++) {
@@ -226,6 +277,8 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
           paymentsHubTotals.mastercard += amount;
         } else if (cardBrand === "american express") {
           paymentsHubTotals["american express"] += amount;
+        } else if (cardBrand === "discover") {
+          paymentsHubTotals.discover += amount;
         }
       }
     }
@@ -234,7 +287,8 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const salesTotals = {
       visa: 0,
       mastercard: 0,
-      "american express": 0
+      "american express": 0,
+      discover: 0 // Added Discover
     };
     
     for (let i = 1; i < salesTotalsData.length; i++) {
@@ -254,6 +308,8 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
           salesTotals.mastercard += amount;
         } else if (cardType === "american express") {
           salesTotals["american express"] += amount;
+        } else if (cardType === "discover") {
+          salesTotals.discover += amount;
         }
       }
     }
@@ -262,7 +318,8 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const differences = {
       visa: paymentsHubTotals.visa - salesTotals.visa,
       mastercard: paymentsHubTotals.mastercard - salesTotals.mastercard,
-      "american express": paymentsHubTotals["american express"] - salesTotals["american express"]
+      "american express": paymentsHubTotals["american express"] - salesTotals["american express"],
+      discover: paymentsHubTotals.discover - salesTotals.discover // Added Discover
     };
 
     // Create summary section data - matches the VBA section that creates I1:O4
@@ -294,6 +351,15 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
         formatCurrencyString(salesTotals["american express"]), 
         "", 
         formatCurrencyString(differences["american express"])
+      ],
+      [
+        "Discover", 
+        formatCurrencyString(paymentsHubTotals.discover), 
+        "", 
+        "Discover", 
+        formatCurrencyString(salesTotals.discover), 
+        "", 
+        formatCurrencyString(differences.discover)
       ]
     ];
 
