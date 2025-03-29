@@ -6,7 +6,7 @@
 async function compareAndDisplayData(XLSX, file1Data, file2Data) {
   try {
     // Load workbooks
-    const workbook1 = XLSX.read(file1Data, { 
+    const workbook1 = XLSX.read(file1Data, {
       cellStyles: true,
       cellFormulas: true,
       cellDates: true,
@@ -17,7 +17,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       cellStyles: true,
       cellFormulas: true,
       cellDates: true,
-      cellNF: true, 
+      cellNF: true,
       sheetStubs: true
     });
     // Get sheets (assuming similar structure to original VBA)
@@ -25,21 +25,27 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     const paymentsHubSheet = workbook1.Sheets[workbook1.SheetNames[0]];
     // Second file should have "Sales Totals" sheet
     const salesTotalsSheet = workbook2.Sheets[workbook2.SheetNames[0]];
-    
+
     // Convert sheets to JSON for easier processing
-    const paymentsHubData = XLSX.utils.sheet_to_json(paymentsHubSheet, {header: 1, defval: ""});
-    const salesTotalsData = XLSX.utils.sheet_to_json(salesTotalsSheet, {header: 1, defval: ""});
-    
+    const paymentsHubData = XLSX.utils.sheet_to_json(paymentsHubSheet, {
+      header: 1,
+      defval: ""
+    });
+    const salesTotalsData = XLSX.utils.sheet_to_json(salesTotalsSheet, {
+      header: 1,
+      defval: ""
+    });
+
     // Process data - Mirroring the VBA workflow
     // Step 1: Process Payments Hub Transaction data
-    
+
     // Get column indices (assuming they match the original structure)
     const dateColIndex = findColumnIndex(paymentsHubData[0], "Date");
     const customerNameColIndex = findColumnIndex(paymentsHubData[0], "Customer Name");
     const totalAmountColIndex = findColumnIndex(paymentsHubData[0], "Total Transaction Amount");
     const discountingAmountColIndex = findColumnIndex(paymentsHubData[0], "Cash Discounting Amount");
     const cardBrandColIndex = findColumnIndex(paymentsHubData[0], "Card Brand");
-    
+
     // Step 2: Calculate K-R (similar to AA column in VBA)
     // Original formula: =RC[-16]-RC[-9] (Total Transaction Amount - Cash Discounting Amount)
     const paymentsHubWithKR = paymentsHubData.map((row, index) => {
@@ -56,6 +62,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       return row;
     });
     // Step 3: Process Sales Totals data
+    // Find relevant columns in Sales Totals
     // Find relevant columns in Sales Totals
     const salesDateColIndex = findColumnIndex(salesTotalsData[0], "Date");
     const salesCardBrandColIndex = findColumnIndex(salesTotalsData[0], "Card Brand");
@@ -76,9 +83,9 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       });
       salesAmountColIndex = processedSalesData[0].length - 1;
     }
-    
+
     // Step 4: Add Count column (similar to AB column in VBA)
-    // Original formula: =COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!C24,'Payments Hub Transaction'!RC27)
+    // Original formula: =COUNTIFS('Sales Totals'!C2,'Payments Hub Transaction'!RC1,'Sales Totals'!RC24,'Payments Hub Transaction'!RC27)
     const krColIndex = paymentsHubWithKR[0].length - 1;
     // Initialize paymentsHubWithCount with a default value
     let paymentsHubWithCount = [];
@@ -89,7 +96,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
       } else if (row.length > 0) {
         // Calculate Count value
         let count = 0;
-        
+
         // Count matching rows between the two sheets
         for (let i = 1; i < processedSalesData.length; i++) {
           const salesRow = processedSalesData[i];
@@ -101,7 +108,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
             count++;
           }
         }
-        
+
         return [...row, count];
       }
       return row;
@@ -114,10 +121,10 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     // Keep only the visible columns as in the VBA (date, customer name, total amount, discount, card brand, K-R)
     const finalData = filteredRows.map(row => {
       return [
-        row[dateColIndex], 
-        row[customerNameColIndex], 
-        row[totalAmountColIndex], 
-        row[discountingAmountColIndex], 
+        row[dateColIndex],
+        row[customerNameColIndex],
+        row[totalAmountColIndex],
+        row[discountingAmountColIndex],
         row[cardBrandColIndex],
         row[krColIndex] // K-R
       ];
@@ -126,42 +133,48 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
     finalData[0][5] = "Total (-) Fee";
     // Step 6: Add reconciliation summary (mirroring the right side of "Final" sheet)
     // Calculate card brand totals
-    
+
     function calculateCardTotals(data, cardBrandColIndex, amountColIndex) {
-        const totals = {};
-        for (let i = 1; i < data.length; i++) {
-            const row = data[i];
-            if (row.length > Math.max(cardBrandColIndex, amountColIndex) && row[cardBrandColIndex] && row[cardBrandColIndex] !== null) {
-                const cardBrand = row[cardBrandColIndex].toString().toLowerCase();
-                const amount = parseFloat(row[amountColIndex]) || 0;
-                totals[cardBrand] = (totals[cardBrand] || 0) + amount;
-            }
+      const totals = {};
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (row.length > Math.max(cardBrandColIndex, amountColIndex) && row[cardBrandColIndex] && row[cardBrandColIndex] !== null) {
+          const cardBrand = row[cardBrandColIndex].toString().toLowerCase();
+          const amount = parseFloat(row[amountColIndex]) || 0;
+          totals[cardBrand] = (totals[cardBrand] || 0) + amount;
         }
-        return totals;
+      }
+      return totals;
     }
 
     const paymentsHubTotals = calculateCardTotals(paymentsHubWithCount, cardBrandColIndex, krColIndex);
+
+    // DEBUGGING: Inspect the values before calculateCardTotals is called
+    console.log("salesCardBrandColIndex:", salesCardBrandColIndex);
+    console.log("salesAmountColIndex:", salesAmountColIndex);
+    console.log("processedSalesData:", processedSalesData);
+
     const salesTotals = calculateCardTotals(processedSalesData, salesCardBrandColIndex, salesAmountColIndex);
 
     // FIXED: Updated header and calculated totals
     const summaryData = [
-        ["Hub Report", "Total", "", "Sales Report", "Total", "", "Difference"],
-        ["Visa", paymentsHubTotals['visa'] || 0, "", "Visa", salesTotals['visa'] || 0, "", (paymentsHubTotals['visa'] || 0) - (salesTotals['visa'] || 0)],
-        ["Mastercard", paymentsHubTotals['mastercard'] || 0, "", "Mastercard", salesTotals['mastercard'] || 0, "", (paymentsHubTotals['mastercard'] || 0) - (salesTotals['mastercard'] || 0)],
-        ["American Express", paymentsHubTotals['american express'] || 0, "", "American Express", salesTotals['american express'] || 0, "", (paymentsHubTotals['american express'] || 0) - (salesTotals['american express'] || 0)],
-        ["Discover", paymentsHubTotals['discover'] || 0, "", "Discover", salesTotals['discover'] || 0, "", (paymentsHubTotals['discover'] || 0) - (salesTotals['discover'] || 0)]
+      ["Hub Report", "Total", "", "Sales Report", "Total", "", "Difference"],
+      ["Visa", paymentsHubTotals['visa'] || 0, "", "Visa", salesTotals['visa'] || 0, "", (paymentsHubTotals['visa'] || 0) - (salesTotals['visa'] || 0)],
+      ["Mastercard", paymentsHubTotals['mastercard'] || 0, "", "Mastercard", salesTotals['mastercard'] || 0, "", (paymentsHubTotals['mastercard'] || 0) - (salesTotals['mastercard'] || 0)],
+      ["American Express", paymentsHubTotals['american express'] || 0, "", "American Express", salesTotals['american express'] || 0, "", (paymentsHubTotals['american express'] || 0) - (salesTotals['american express'] || 0)],
+      ["Discover", paymentsHubTotals['discover'] || 0, "", "Discover", salesTotals['discover'] || 0, "", (paymentsHubTotals['discover'] || 0) - (salesTotals['discover'] || 0)]
     ];
     // Combine finalData with summaryData
     const maxRows = Math.max(finalData.length, summaryData.length);
     const resultData = [];
     for (let i = 0; i < maxRows; i++) {
       const finalRow = i < finalData.length ?
-      finalData[i] : Array(finalData[0].length).fill("");
+        finalData[i] : Array(finalData[0].length).fill("");
       const summaryRow = i < summaryData.length ? summaryData[i] : Array(summaryData[0].length).fill("");
-      
+
       resultData.push([...finalRow, "", ...summaryRow]);
     }
-    
+
     // Format numbers for display
     for (let i = 1; i < resultData.length; i++) {
       for (let j = 0; j < resultData[i].length; j++) {
@@ -170,12 +183,14 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
         }
       }
     }
-    
+
     return resultData;
-    
+
   } catch (error) {
     console.error("Error processing data:", error);
-    return [["Error processing data: " + error.message]];
+    return [
+      ["Error processing data: " + error.message]
+    ];
   }
 }
 
@@ -183,7 +198,7 @@ async function compareAndDisplayData(XLSX, file1Data, file2Data) {
  * Helper function to find the index of a column by name
  */
 function findColumnIndex(headerRow, columnName) {
-  return headerRow.findIndex(header => 
+  return headerRow.findIndex(header =>
     header && header.toString().toLowerCase() === columnName.toLowerCase()
   );
 }
@@ -195,18 +210,18 @@ function findColumnIndex(headerRow, columnName) {
  */
 function calculateTotalByCardBrand(data, cardBrandColIndex, amountColIndex, brandName) {
   let total = 0;
-  
+
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     if (
-      row.length > Math.max(cardBrandColIndex, amountColIndex) && 
-      row[cardBrandColIndex] && 
+      row.length > Math.max(cardBrandColIndex, amountColIndex) &&
+      row[cardBrandColIndex] &&
       row[cardBrandColIndex].toString().toLowerCase() === brandName.toLowerCase()
     ) {
       const amount = parseFloat(row[amountColIndex]) || 0;
       total += amount;
     }
   }
-  
+
   return total;
 }
