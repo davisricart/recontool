@@ -39,7 +39,7 @@
             background: var(--primary); 
             color: white; 
             border: none; 
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer; 
             margin-right: 10px;
             font-weight: 500;
@@ -160,12 +160,44 @@
             margin-bottom: 15px;
         }
 
-        input[type="file"] {
-            padding: 8px;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            width: 100%;
+        /* Custom file input styling that works across browsers */
+        .custom-file-input {
+            display: flex;
             max-width: 300px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .custom-file-button {
+            background-color: var(--primary);
+            color: white;
+            padding: 8px 12px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9em;
+            white-space: nowrap;
+            border-radius: 6px;
+            margin: 2px;
+        }
+
+        .custom-file-button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .custom-file-name {
+            padding: 8px;
+            font-size: 0.9em;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex-grow: 1;
+        }
+
+        /* Hide the actual file input */
+        .real-file-input {
+            display: none;
         }
 
         h3 {
@@ -196,16 +228,24 @@
     <form id="uploadForm">
         <div class="file-upload-section">
             <div class="input-group">
-                <label for="file1">Upload First File:</label>
-                <input type="file" id="file1" accept=".xlsx">
+                <label for="file1Input">Upload First File:</label>
+                <div class="custom-file-input">
+                    <button type="button" class="custom-file-button" onclick="document.getElementById('file1Input').click()">Select a file</button>
+                    <span class="custom-file-name" id="file1Name">No file selected</span>
+                    <input type="file" id="file1Input" class="real-file-input" accept=".xlsx" onchange="updateFileName(this, 'file1Name')">
+                </div>
                 <div class="drop-area" id="dropArea1">
                     <p>Drag & drop your first Excel file here</p>
                 </div>
             </div>
             
             <div class="input-group">
-                <label for="file2">Upload Second File:</label>
-                <input type="file" id="file2" accept=".xlsx">
+                <label for="file2Input">Upload Second File:</label>
+                <div class="custom-file-input">
+                    <button type="button" class="custom-file-button" onclick="document.getElementById('file2Input').click()">Select a file</button>
+                    <span class="custom-file-name" id="file2Name">No file selected</span>
+                    <input type="file" id="file2Input" class="real-file-input" accept=".xlsx" onchange="updateFileName(this, 'file2Name')">
+                </div>
                 <div class="drop-area" id="dropArea2">
                     <p>Drag & drop your second Excel file here</p>
                 </div>
@@ -248,7 +288,7 @@
         const scriptOptions = [
             { 
                 value: "run4", 
-                label: "Hub vs Sales", 
+                label: "Main HUB vs Sales", 
                 description: "Compares payment data between two files and highlights discrepancies in transaction amounts."
             },
             { 
@@ -338,13 +378,38 @@
                 // Set the files to the file input
                 fileInput.files = files;
                 
+                // Update the file name display based on the input's id
+                if (fileInput.id === 'file1Input') {
+                    updateFileName(fileInput, 'file1Name');
+                } else if (fileInput.id === 'file2Input') {
+                    updateFileName(fileInput, 'file2Name');
+                }
+                
                 // Trigger change event on file input
                 const event = new Event('change');
                 fileInput.dispatchEvent(event);
             }
         }
 
+        // Function to update filename display
+        function updateFileName(input, nameElementId) {
+            const nameElement = document.getElementById(nameElementId);
+            if (input.files.length > 0) {
+                nameElement.textContent = input.files[0].name;
+            } else {
+                nameElement.textContent = 'No file selected';
+            }
+        }
+        
         // Setup drag and drop for both file inputs
+        setupDragDrop(
+            document.getElementById('dropArea1'), 
+            document.getElementById('file1Input')
+        );
+        setupDragDrop(
+            document.getElementById('dropArea2'), 
+            document.getElementById('file2Input')
+        );
         setupDragDrop(
             document.getElementById('dropArea1'), 
             document.getElementById('file1')
@@ -381,8 +446,8 @@
         }
 
         async function compareFiles() {
-            const file1 = document.getElementById('file1').files[0];
-            const file2 = document.getElementById('file2').files[0];
+            const file1 = document.getElementById('file1Input').files[0];
+            const file2 = document.getElementById('file2Input').files[0];
             const scriptName = document.getElementById('scriptSelect').value;
             const status = document.getElementById('status');
             const previewTable = document.getElementById('previewTable');
@@ -533,8 +598,12 @@
         
         function clearForm() {
             // Reset file inputs
-            document.getElementById('file1').value = '';
-            document.getElementById('file2').value = '';
+            document.getElementById('file1Input').value = '';
+            document.getElementById('file2Input').value = '';
+            
+            // Reset file name displays
+            document.getElementById('file1Name').textContent = 'No file selected';
+            document.getElementById('file2Name').textContent = 'No file selected';
             
             // Reset script select dropdown
             document.getElementById('scriptSelect').selectedIndex = 0;
