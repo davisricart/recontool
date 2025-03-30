@@ -379,6 +379,27 @@
                     return !(firstCol.includes("check") || firstCol.includes("grand total"));
                 });
                 
+                // Process data for display consistency
+                // Replace blank values with '0' in relevant columns of the Card Brand comparison section
+                let inComparisonSection = false;
+                for (let i = 0; i < result.length; i++) {
+                    if (result[i][0] === "Card Brand") {
+                        inComparisonSection = true;
+                        continue;
+                    }
+                    
+                    if (inComparisonSection && result[i].length > 0) {
+                        // If this is a row in the comparison section (after Card Brand header)
+                        // Ensure Hub Report (index 1), Sales Report (index 2), and Difference (index 3) all have values
+                        if (result[i][0] !== "") { // Skip separator rows
+                            // Replace nulls, undefined, or empty strings with numeric 0
+                            result[i][1] = (result[i][1] === null || result[i][1] === undefined || result[i][1] === "") ? 0 : result[i][1];
+                            result[i][2] = (result[i][2] === null || result[i][2] === undefined || result[i][2] === "") ? 0 : result[i][2];
+                            result[i][3] = (result[i][3] === null || result[i][3] === undefined || result[i][3] === "") ? 0 : result[i][3];
+                        }
+                    }
+                }
+                
                 // First, identify the index of the "Card Brand" header row and the row index
                 // where the comparison section starts
                 let cardBrandHeaderIndex = -1;
