@@ -344,8 +344,14 @@
 
             try {
                 status.textContent = 'Fetching script...';
-                const scriptContent = await fetchComparisonScript(scriptName);
-
+                let scriptContent = await fetchComparisonScript(scriptName);
+                
+                // Modify script to filter out "Check" and "Grand Total" entries
+                scriptContent = scriptContent.replace(
+                    /\.filter\(b => !b\.toLowerCase\(\)\.includes\("cash"\)/g, 
+                    '.filter(b => !b.toLowerCase().includes("cash") && !b.toLowerCase().includes("check") && !b.toLowerCase().includes("grand total")'
+                );
+                
                 // Create an async function that uses the compareAndDisplayData from the script
                 const CompareFunction = new Function('XLSX', 'file1', 'file2', 
                     `return (async () => {
@@ -359,8 +365,20 @@
                 const content2 = await readExcelFile(file2);
 
                 status.textContent = 'Comparing files...';
-                const result = await CompareFunction(XLSX, content1, content2);
+                let result = await CompareFunction(XLSX, content1, content2);
 
+                // Filter out any "Check" or "Grand Total" rows from the result
+                result = result.filter(row => {
+                    // If this is in the Card Brand comparison section
+                    if (row[0] === "Card Brand" || (row.length > 0 && row[0] === "")) {
+                        return true; // Keep header rows and separator rows
+                    }
+                    
+                    // Remove any row where the first column contains "Check" or "Grand Total"
+                    const firstCol = String(row[0] || "").toLowerCase();
+                    return !(firstCol.includes("check") || firstCol.includes("grand total"));
+                });
+                
                 // First, identify the index of the "Card Brand" header row and the row index
                 // where the comparison section starts
                 let cardBrandHeaderIndex = -1;
@@ -381,9 +399,13 @@
                     row.forEach((cell, cellIndex) => {
                         const td = document.createElement(rowIndex === 0 ? 'th' : 'td');
                         
-                        // For the comparison section, set empty "Sales Report" values (index 2) to "0"
-                        if (isComparisonSection && cellIndex === 2) {
-                            td.textContent = (cell === 0 || cell) ? cell : '0';
+                        // For the comparison section, set empty values to "0" for both Hub Report and Sales Report
+                        if (isComparisonSection) {
+                            if (cellIndex === 1 || cellIndex === 2) { // Hub Report (1) or Sales Report (2)
+                                td.textContent = (cell === 0 || cell) ? cell : '0';
+                            } else {
+                                td.textContent = cell || '';
+                            }
                         } else {
                             td.textContent = cell || '';
                         }
