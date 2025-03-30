@@ -399,9 +399,9 @@
                     row.forEach((cell, cellIndex) => {
                         const td = document.createElement(rowIndex === 0 ? 'th' : 'td');
                         
-                        // For the comparison section, set empty values to "0" for both Hub Report and Sales Report
+                        // For the comparison section, set empty values to "0" for Hub Report, Sales Report, and Difference
                         if (isComparisonSection) {
-                            if (cellIndex === 1 || cellIndex === 2) { // Hub Report (1) or Sales Report (2)
+                            if (cellIndex === 1 || cellIndex === 2 || cellIndex === 3) { // Hub, Sales, or Difference
                                 td.textContent = (cell === 0 || cell) ? cell : '0';
                             } else {
                                 td.textContent = cell || '';
