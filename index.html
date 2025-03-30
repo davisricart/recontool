@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Beauty and Grace</title>
+    <title>Compare Excel Files</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -192,7 +192,7 @@
     </style>
 </head>
 <body>
-    <h1>Beauty and Grace</h1>
+    <h1>Compare Excel Files</h1>
     <form id="uploadForm">
         <div class="file-upload-section">
             <div class="input-group">
@@ -214,8 +214,15 @@
 
         <div class="file-upload-section">
             <div class="input-group">
-                <label for="scriptName">Enter Code:</label>
-                <input type="text" id="scriptName" placeholder="Enter script code name" required>
+                <label for="scriptSelect">Select Script:</label>
+                <div id="loadingScripts">Loading available scripts...</div>
+                <div id="scriptSelectContainer" style="display: none;">
+                    <select id="scriptSelect" required style="width: 100%; max-width: 300px; padding: 10px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 10px;">
+                        <option value="">Select a script...</option>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                    <div id="scriptDescription" style="display: none; padding: 10px; background-color: var(--secondary); border-radius: 4px; margin-bottom: 15px; color: var(--text); font-size: 0.9em; max-width: 400px; border-left: 4px solid var(--primary);"></div>
+                </div>
             </div>
 
             <div>
@@ -236,6 +243,60 @@
         const REPO_OWNER = 'davisricart';
         const REPO_NAME = 'recontool';
         const SCRIPT_PATH = 'scripts';
+        
+        // Hardcoded script options with descriptions
+        const scriptOptions = [
+            { 
+                value: "run4", 
+                label: "Hub vs Sales", 
+                description: "Compares payment data between two files and highlights discrepancies in transaction amounts."
+            },
+            { 
+                value: "N/A", 
+                label: "N/A", 
+                description: "N/A"
+            }
+        ];
+        
+        // Populate the dropdown with script options
+        function populateScriptDropdown() {
+            const selectElement = document.getElementById('scriptSelect');
+            selectElement.innerHTML = '<option value="">Select a script...</option>';
+            
+            scriptOptions.forEach(script => {
+                const option = document.createElement('option');
+                option.value = script.value;
+                option.textContent = script.label;
+                option.dataset.description = script.description;
+                selectElement.appendChild(option);
+            });
+            
+            // Show the script selector section
+            document.getElementById('scriptSelectContainer').style.display = 'block';
+            document.getElementById('loadingScripts').style.display = 'none';
+            
+            // Add event listener to update description when selection changes
+            selectElement.addEventListener('change', updateScriptDescription);
+        }
+        
+        // Update the description based on selected script
+        function updateScriptDescription() {
+            const selectElement = document.getElementById('scriptSelect');
+            const descriptionElement = document.getElementById('scriptDescription');
+            
+            if (selectElement.selectedIndex > 0) {
+                const selectedOption = selectElement.options[selectElement.selectedIndex];
+                const description = selectedOption.dataset.description;
+                descriptionElement.textContent = description;
+                descriptionElement.style.display = 'block';
+            } else {
+                descriptionElement.textContent = '';
+                descriptionElement.style.display = 'none';
+            }
+        }
+        
+        // Load scripts when page loads
+        window.addEventListener('DOMContentLoaded', populateScriptDropdown);
 
         // Drag and drop functionality
         function setupDragDrop(dropArea, fileInput) {
@@ -322,7 +383,7 @@
         async function compareFiles() {
             const file1 = document.getElementById('file1').files[0];
             const file2 = document.getElementById('file2').files[0];
-            const scriptName = document.getElementById('scriptName').value.trim();
+            const scriptName = document.getElementById('scriptSelect').value;
             const status = document.getElementById('status');
             const previewTable = document.getElementById('previewTable');
             const previewArea = document.getElementById('previewArea');
@@ -338,7 +399,7 @@
                 return;
             }
             if (!scriptName) {
-                status.textContent = 'Please enter a script code.';
+                status.textContent = 'Please select a script.';
                 return;
             }
 
@@ -416,9 +477,11 @@
                     
                     // Check if this row is in the card brand comparison section (after the card brand header)
                     const isComparisonSection = cardBrandHeaderIndex > -1 && rowIndex > cardBrandHeaderIndex;
+                    // Check if this is the Card Brand header row
+                    const isCardBrandHeader = row[0] === "Card Brand";
                     
                     row.forEach((cell, cellIndex) => {
-                        const td = document.createElement(rowIndex === 0 ? 'th' : 'td');
+                        const td = document.createElement(rowIndex === 0 || isCardBrandHeader ? 'th' : 'td');
                         
                         // For the comparison section, set empty values to "0" for Hub Report, Sales Report, and Difference
                         if (isComparisonSection) {
@@ -434,6 +497,13 @@
                         // Change text color to red for negative values in the Difference column (index 3)
                         if (isComparisonSection && cellIndex === 3 && typeof cell === 'number' && cell < 0) {
                             td.style.color = 'red';
+                        }
+                        
+                        // Apply styling to Card Brand header row to match other headers
+                        if (isCardBrandHeader) {
+                            td.style.backgroundColor = 'var(--secondary)';
+                            td.style.color = 'var(--primary)';
+                            td.style.fontWeight = '600';
                         }
                         
                         tr.appendChild(td);
@@ -466,8 +536,11 @@
             document.getElementById('file1').value = '';
             document.getElementById('file2').value = '';
             
-            // Reset script name input
-            document.getElementById('scriptName').value = '';
+            // Reset script select dropdown
+            document.getElementById('scriptSelect').selectedIndex = 0;
+            
+            // Hide script description
+            document.getElementById('scriptDescription').style.display = 'none';
             
             // Reset status message
             const status = document.getElementById('status');
