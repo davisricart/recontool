@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Beauty and Grace</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <style>
         :root {
             --primary: #2563EB;
@@ -302,10 +303,10 @@
                         <div class="custom-file-input">
                             <button type="button" class="custom-file-button" onclick="document.getElementById('file1Input').click()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Select File</button>
                             <span class="custom-file-name" id="file1Name">No file selected</span>
-                            <input type="file" id="file1Input" class="real-file-input" accept=".xlsx" onchange="updateFileName(this, 'file1Name')">
+                            <input type="file" id="file1Input" class="real-file-input" accept=".xlsx,.csv" onchange="updateFileName(this, 'file1Name')">
                         </div>
                         <div class="drop-area" id="dropArea1">
-                            <p>Drag & drop your first Excel file here</p>
+                            <p>Drag & drop your first Excel or CSV file here</p>
                         </div>
                     </div>
                     
@@ -314,10 +315,10 @@
                         <div class="custom-file-input">
                             <button type="button" class="custom-file-button" onclick="document.getElementById('file2Input').click()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Select File</button>
                             <span class="custom-file-name" id="file2Name">No file selected</span>
-                            <input type="file" id="file2Input" class="real-file-input" accept=".xlsx" onchange="updateFileName(this, 'file2Name')">
+                            <input type="file" id="file2Input" class="real-file-input" accept=".xlsx,.csv" onchange="updateFileName(this, 'file2Name')">
                         </div>
                         <div class="drop-area" id="dropArea2">
-                            <p>Drag & drop your second Excel file here</p>
+                            <p>Drag & drop your second Excel or CSV file here</p>
                         </div>
                     </div>
                 </div>
@@ -514,13 +515,39 @@
             }
         }
 
-        function readExcelFile(file) {
+        function readFile(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = (e) => resolve(e.target.result);
                 reader.onerror = (e) => reject(e);
-                reader.readAsArrayBuffer(file);
+                
+                if (file.name.toLowerCase().endsWith('.csv')) {
+                    reader.readAsText(file);
+                } else {
+                    reader.readAsArrayBuffer(file);
+                }
             });
+        }
+        
+        function isCSVFile(file) {
+            return file && file.name.toLowerCase().endsWith('.csv');
+        }
+        
+        function convertCSVToExcel(csvContent) {
+            // Parse CSV 
+            const parsedData = Papa.parse(csvContent, {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: true
+            });
+            
+            // Convert to workbook format
+            const worksheet = XLSX.utils.json_to_sheet(parsedData.data);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+            
+            // Return as array buffer
+            return XLSX.write(workbook, { type: 'array' });
         }
 
         async function compareFiles() {
@@ -565,8 +592,17 @@
                 );
 
                 status.textContent = 'Reading files...';
-                const content1 = await readExcelFile(file1);
-                const content2 = await readExcelFile(file2);
+                let content1 = await readFile(file1);
+                let content2 = await readFile(file2);
+                
+                // Convert CSV files to Excel format if needed
+                if (isCSVFile(file1)) {
+                    content1 = convertCSVToExcel(content1);
+                }
+                
+                if (isCSVFile(file2)) {
+                    content2 = convertCSVToExcel(content2);
+                }
 
                 status.textContent = 'Comparing files...';
                 let result = await CompareFunction(XLSX, content1, content2);
