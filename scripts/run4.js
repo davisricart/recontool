@@ -15,6 +15,37 @@ function compareAndDisplayData(XLSX, file1, file2) {
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     }
     
+    // Define the allowed columns
+    const allowedColumns = [
+        "Date",
+        "Transaction Source",
+        "Transaction Type",
+        "Account Number",
+        "DBA",
+        "Invoice",
+        "Auth",
+        "BRIC",
+        "Sold By",
+        "Customer Name",
+        "Total Transaction Amount",
+        "Payment Amount",
+        "Authorized Amount",
+        "Tip",
+        "$ Discount",
+        "% Discount",
+        "$ Tax",
+        "Cash Discounting Amount",
+        "State Tax",
+        "County Tax",
+        "City Tax",
+        "Custom Tax",
+        "Payment Type",
+        "Card Brand",
+        "First 6",
+        "Last 4",
+        "Comment"
+    ];
+    
     // Step 1: Process First File
     // Parse the first Excel file
     const workbook1 = XLSX.read(file1, {
@@ -26,8 +57,44 @@ function compareAndDisplayData(XLSX, file1, file2) {
     const sheetName1 = workbook1.SheetNames[0];
     const worksheet1 = workbook1.Sheets[sheetName1];
     
-    // Convert worksheet to JSON
-    const jsonData1 = XLSX.utils.sheet_to_json(worksheet1);
+    // Convert worksheet to JSON with headers
+    const rawData = XLSX.utils.sheet_to_json(worksheet1, { header: 1 });
+    
+    // Filter the columns to keep only allowed ones
+    const headers = rawData[0] || [];
+    const columnsToKeepIndices = [];
+    
+    // Find indices of allowed columns
+    headers.forEach((header, index) => {
+        if (allowedColumns.includes(header)) {
+            columnsToKeepIndices.push(index);
+        }
+    });
+    
+    // Create filtered data with only allowed columns
+    const filteredData = [];
+    
+    // Add filtered headers
+    const filteredHeaders = columnsToKeepIndices.map(index => headers[index]);
+    filteredData.push(filteredHeaders);
+    
+    // Add filtered rows
+    for (let i = 1; i < rawData.length; i++) {
+        const row = rawData[i];
+        const filteredRow = columnsToKeepIndices.map(index => 
+            index < row.length ? row[index] : "");
+        filteredData.push(filteredRow);
+    }
+    
+    // Convert filtered data to JSON format (array of objects with headers as keys)
+    const jsonData1 = [];
+    for (let i = 1; i < filteredData.length; i++) {
+        const obj = {};
+        filteredData[0].forEach((header, index) => {
+            obj[header] = filteredData[i][index];
+        });
+        jsonData1.push(obj);
+    }
     
     // Step 2: Process Second File (if provided)
     let jsonData2 = [];
@@ -83,7 +150,7 @@ function compareAndDisplayData(XLSX, file1, file2) {
     }
     
     // Step 3: Filter First File and Add New Columns
-    // Define columns to keep
+    // Define columns to keep from the filtered data
     const columnsToKeep = ["Date", "Customer Name", "Total Transaction Amount", "Cash Discounting Amount", "Card Brand"];
     const newColumns = ["Total (-) Fee", "Count", "Final Count"];
     
@@ -197,6 +264,7 @@ function compareAndDisplayData(XLSX, file1, file2) {
         firstFileData.push(filteredRow);
     });
     
+    // Rest of the code remains the same...
     // Step 4: Process Second File Data and Calculate Count2 Values
     if (file2 && file2Headers.length > 0) {
         const secondFileWithCount2 = [];
